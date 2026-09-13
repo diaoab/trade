@@ -1,0 +1,10 @@
+# Normalise les fins de ligne en LF pour tout le monde, quel que soit l'OS,
+# et evite les conflits core.autocrlf / core.safecrlf sous Windows.
+* text=auto eol=lf
+
+# Binaires : jamais de conversion de fin de ligne.
+*.xlsx binary
+*.pkl binary
+*.png binary
+*.jpg binary
+*.jpeg binary

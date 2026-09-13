@@ -1,0 +1,5 @@
+# Dependances de developpement uniquement (tests). Le runtime de l'app et de
+# l'entrainement reste dans requirements.txt.
+-r requirements.txt
+
+pytest==9.1.1

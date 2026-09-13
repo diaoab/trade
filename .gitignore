@@ -1,0 +1,34 @@
+# Environnement
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Modeles entraines : regenerables via python -m training.train,
+# et joblib.load execute du code a l'ouverture -- a ne pas versionner.
+models/*.pkl
+
+# Sorties d'entrainement
+results/*.csv
+
+# Donnees et fichiers verrous Excel
+~$*.xlsx
+data/*.xlsx
+data/_archive/
+
+# Tests
+.pytest_cache/
+
+# Systeme
+.DS_Store
+Thumbs.db
+
+# Symlinks locaux de decouverte de skills (pointent dans venv/, absents chez
+# quiconque clone le repo) et verrou de session Claude Code (etat ephemere).
+.agents/skills/*
+.claude/skills/*
+.claude/scheduled_tasks.lock
