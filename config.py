@@ -27,6 +27,13 @@ FEATURES_PATH = MODEL_DIR / "features.pkl"
 MODEL_METADATA_PATH = MODEL_DIR / "metadata.json"
 PROBA_REFERENCE_PATH = MODEL_DIR / "probability_reference.pkl"
 
+# Journal des analyses demandees par l'utilisateur : chaque clic sur
+# "Analyser" y ajoute une ligne, horodatee avant que le resultat futur ne
+# soit connu. C'est la seule facon de mesurer plus tard une performance en
+# conditions reelles, jamais influencee par l'entrainement -- contrairement
+# meme au test walk-forward, qui reste un backtest sur donnees passees.
+PREDICTION_LOG_PATH = RESULT_DIR / "prediction_log.csv"
+
 
 # Colonnes minimales dont dépendent les indicateurs et le moteur de décision.
 REQUIRED_COLUMNS = ["Close"]

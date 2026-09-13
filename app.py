@@ -14,6 +14,7 @@ from services.indicators import calculate_indicators
 from services.predictor import ModelUnavailable, load_model_metadata, predict_row
 
 from services.decision_engine import analyze
+from services.prediction_log import load_prediction_log, log_prediction
 
 
 # =========================================================
@@ -705,6 +706,19 @@ if analyze_button:
         weights
     )
 
+    # Trace de cette analyse, avant que le resultat reel ne soit connu : seule
+    # base possible pour mesurer plus tard une performance en conditions
+    # reelles (cf. services/prediction_log.py).
+    log_prediction(
+        symbol=selected_symbol,
+        structure_name=structures[selected_symbol]["name"],
+        session_date=latest["Date"] if "Date" in clean_df.columns else None,
+        close=latest["Close"],
+        result=result,
+        ml_result=ml_result,
+        weights=weights
+    )
+
     st.header(":material/query_stats: Résultat de l'analyse", divider=True)
 
     model_metadata = load_model_metadata()
@@ -843,3 +857,29 @@ with st.expander("Voir les données", icon=":material/table_chart:"):
         df.tail(30),
         width="stretch"
     )
+
+
+# =========================================================
+# JOURNAL DES ANALYSES
+# =========================================================
+
+prediction_log = load_prediction_log()
+
+if not prediction_log.empty:
+
+    with st.expander(
+        "Journal des analyses (suivi en conditions réelles)",
+        icon=":material/history:"
+    ):
+
+        st.caption(
+            "Chaque « Analyser » est enregistré ici avant que le résultat "
+            "réel ne soit connu — la seule base fiable pour mesurer, dans "
+            "le temps, si les décisions passées se sont avérées justes."
+        )
+
+        st.dataframe(
+            prediction_log.sort_values("logged_at", ascending=False),
+            width="stretch",
+            hide_index=True
+        )
