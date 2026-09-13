@@ -1,22 +1,23 @@
-# Professional Financial Dashboard Theme (Dark)
-# Conservative, trustworthy palette with clear data visualization
+# Financial AI Advisor — "Trading terminal" dark theme
+# Near-black charcoal + gold accent, distinctive from generic slate/blue
+# SaaS dashboards. Semantic green/red kept for gains/losses.
 
 [theme]
 base = "dark"
-primaryColor = "#60A5FA"             # Bright blue for dark mode
-backgroundColor = "#0F172A"          # Deep slate
-secondaryBackgroundColor = "#1E293B" # Slightly lighter slate
-codeBackgroundColor = "#1E293B"
-textColor = "#F1F5F9"                # Light text
-linkColor = "#60A5FA"
-borderColor = "#334155"
-codeTextColor = "#CBD5E1"
+primaryColor = "#E3B341"             # Warm gold — distinctive, evokes finance
+backgroundColor = "#0B0E13"          # Near-black charcoal
+secondaryBackgroundColor = "#161B23" # Card/widget background
+codeBackgroundColor = "#161B23"
+textColor = "#EDEFF2"
+linkColor = "#E3B341"
+borderColor = "#262D38"
+codeTextColor = "#C7CDD6"
 showWidgetBorder = true
 showSidebarBorder = true
-baseRadius = "6px"                   # Subtle rounding - professional, not playful
-buttonRadius = "6px"
+baseRadius = "8px"
+buttonRadius = "8px"
 
-# Typography - Clean, professional fonts
+# Typography
 font = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
 headingFont = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@600;700&display=swap"
 codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
@@ -27,50 +28,50 @@ headingFontSizes = ["28px", "22px", "18px", "16px", "14px", "12px"]
 headingFontWeights = [700, 600, 600, 600, 500, 500]
 linkUnderline = false
 
-# Semantic colors for financial indicators
-greenColor = "#34D399"  # Positive/gains - bright green
-redColor = "#F87171"    # Negative/losses - bright red
-yellowColor = "#FBBF24" # Warnings/caution
-orangeColor = "#FB923C" # Alerts
-blueColor = "#60A5FA"   # Informational
-violetColor = "#A78BFA" # Accent/highlights
-grayColor = "#94A3B8"   # Neutral/secondary text
+# Semantic colors
+greenColor = "#3ECF8E"   # Gains
+redColor = "#F0576B"     # Losses
+yellowColor = "#E3B341"  # Warnings (matches primary gold)
+orangeColor = "#F0954D"  # Risk / alerts
+blueColor = "#5B9DF9"    # Technical analysis accent
+violetColor = "#B18AF8"  # Machine learning accent
+grayColor = "#8A94A6"    # Neutral / secondary text
 
-# Chart colors - Distinguishable palette for financial data
+# Chart colors
 chartCategoricalColors = [
-    "#60A5FA",
-    "#34D399",
-    "#A78BFA",
-    "#F87171",
-    "#FBBF24",
-    "#38BDF8",
-    "#94A3B8",
-    "#FB923C",
+    "#E3B341",
+    "#5B9DF9",
+    "#3ECF8E",
+    "#B18AF8",
+    "#F0576B",
+    "#F0954D",
+    "#4DD4E8",
+    "#8A94A6",
 ]
 
-# Sequential colors for heatmaps (blue gradient)
+# Sequential colors (gold gradient, for heatmaps)
 chartSequentialColors = [
-    "#0C4A6E",
-    "#075985",
-    "#0369A1",
-    "#0284C7",
-    "#0EA5E9",
-    "#38BDF8",
-    "#7DD3FC",
-    "#BAE6FD",
-    "#E0F2FE",
-    "#F0F9FF",
+    "#2B2107",
+    "#453410",
+    "#6B4F18",
+    "#916A1F",
+    "#B7862A",
+    "#D3A036",
+    "#E3B341",
+    "#EBC569",
+    "#F3D89A",
+    "#FAECC9",
 ]
 
 # Dataframe styling
-dataframeBorderColor = "#334155"
-dataframeHeaderBackgroundColor = "#1E293B"
+dataframeBorderColor = "#262D38"
+dataframeHeaderBackgroundColor = "#161B23"
 
 # Sidebar
 [theme.sidebar]
-backgroundColor = "#0F172A"
-secondaryBackgroundColor = "#1E293B"
-codeBackgroundColor = "#1E293B"
-textColor = "#F1F5F9"
-borderColor = "#334155"
-primaryColor = "#60A5FA"
+backgroundColor = "#0B0E13"
+secondaryBackgroundColor = "#161B23"
+codeBackgroundColor = "#161B23"
+textColor = "#EDEFF2"
+borderColor = "#262D38"
+primaryColor = "#E3B341"

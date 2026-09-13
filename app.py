@@ -394,11 +394,63 @@ if ohlc_issues.get("flat_day_quirk"):
 # COURS
 # =========================================================
 
-with st.container(horizontal=True):
-    st.metric("Cours", f"{latest['Close']:.2f}", border=True)
-    st.metric("MM20", f"{latest['MM20']:.2f}", border=True)
-    st.metric("MM50", f"{latest['MM50']:.2f}", border=True)
-    st.metric("RSI", f"{latest['RSI']:.2f}", border=True)
+# Séance precedente dans l'historique (pas forcement la veille naturelle,
+# ex. weekends) : sert de reference pour la variation affichee sur chaque
+# metrique et pour les mini-graphiques de tendance.
+SPARKLINE_WINDOW = 20
+
+latest_position = clean_df.index.get_loc(latest.name)
+
+previous = (
+    clean_df.iloc[latest_position - 1]
+    if latest_position > 0
+    else None
+)
+
+recent_window = clean_df.iloc[
+    max(0, latest_position - SPARKLINE_WINDOW + 1):latest_position + 1
+]
+
+
+def _delta(column):
+    if previous is None:
+        return None
+    return f"{latest[column] - previous[column]:.2f}"
+
+
+with st.container(horizontal=True, horizontal_alignment="distribute", wrap=False):
+    st.metric(
+        "Cours",
+        f"{latest['Close']:.2f}",
+        delta=_delta("Close"),
+        border=True,
+        chart_data=recent_window["Close"],
+        chart_type="line"
+    )
+    st.metric(
+        "MM20",
+        f"{latest['MM20']:.2f}",
+        delta=_delta("MM20"),
+        border=True,
+        chart_data=recent_window["MM20"],
+        chart_type="line"
+    )
+    st.metric(
+        "MM50",
+        f"{latest['MM50']:.2f}",
+        delta=_delta("MM50"),
+        border=True,
+        chart_data=recent_window["MM50"],
+        chart_type="line"
+    )
+    st.metric(
+        "RSI",
+        f"{latest['RSI']:.2f}",
+        delta=_delta("RSI"),
+        border=True,
+        chart_data=recent_window["RSI"],
+        chart_type="line"
+    )
 
 
 # =========================================================
@@ -686,12 +738,23 @@ if analyze_button:
         st.warning(decision, icon=":material/trending_flat:")
 
 
-    with st.container(horizontal=True):
-        st.metric("Score global", f"{result['score']}/100", border=True)
-        st.metric("Confiance", f"{result['confidence']}%", border=True)
+    with st.container(horizontal=True, wrap=False):
+        st.metric(
+            "Score global",
+            f"{result['score']}/100",
+            icon=":material/speed:",
+            border=True
+        )
+        st.metric(
+            "Confiance",
+            f"{result['confidence']}%",
+            icon=":material/verified:",
+            border=True
+        )
         st.metric(
             "Probabilité ML (forte perf. à 5j)",
             f"{ml_result['probability_up'] * 100:.1f}%",
+            icon=":material/psychology:",
             border=True
         )
 
@@ -702,15 +765,17 @@ if analyze_button:
 
     st.subheader(":material/donut_small: Détail des scores")
 
-    with st.container(horizontal=True):
+    with st.container(horizontal=True, wrap=False):
         st.metric(
             "Analyse technique",
             f"{result['technical_score']}/100",
+            icon=":material/show_chart:",
             border=True
         )
         st.metric(
             "Machine Learning",
             f"{result['ml_score']}/100",
+            icon=":material/psychology:",
             border=True
         )
         st.metric(
@@ -718,6 +783,7 @@ if analyze_button:
             f"{result['risk_score']}/100"
             if result["risk_score"] is not None
             else "non mesuré",
+            icon=":material/shield:",
             border=True
         )
 
