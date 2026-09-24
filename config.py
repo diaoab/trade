@@ -34,6 +34,13 @@ PROBA_REFERENCE_PATH = MODEL_DIR / "probability_reference.pkl"
 # meme au test walk-forward, qui reste un backtest sur donnees passees.
 PREDICTION_LOG_PATH = RESULT_DIR / "prediction_log.csv"
 
+# Reglages utilisateur (palette, indicateurs, poids) enregistres depuis la
+# page Parametres : sur disque plutot qu'en st.session_state seul, pour
+# qu'ils survivent a un rechargement de page (F5 = nouvelle session cote
+# navigateur) et a un redemarrage du serveur. Prive a la machine locale,
+# voir .gitignore.
+PREFERENCES_PATH = DATA_DIR / "preferences.json"
+
 
 # Colonnes minimales dont dépendent les indicateurs et le moteur de décision.
 REQUIRED_COLUMNS = ["Close"]

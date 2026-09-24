@@ -20,6 +20,10 @@ results/*.csv
 data/*.xlsx
 data/_archive/
 
+# Reglages utilisateur (palette, indicateurs, poids) : etat local a la
+# machine, pas des donnees de projet a partager.
+data/preferences.json
+
 # Tests
 .pytest_cache/
 

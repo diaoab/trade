@@ -1,6 +1,7 @@
 import streamlit as st
 
 from config import INDICATOR_OPTIONS
+from services.preferences import save_preferences
 from services.themes import THEMES, theme_swatch_html
 
 
@@ -194,6 +195,15 @@ if st.button(
     st.session_state["theme_name"] = theme_name_draft
     st.session_state["selected_parameters"] = selected_parameters_draft
     st.session_state["weights"] = weights_draft
+
+    # Sur disque, pas seulement en session_state : sans ca, un simple
+    # rechargement de page (F5) ouvre une nouvelle session et revient aux
+    # reglages par defaut malgre ce clic.
+    save_preferences({
+        "theme_name": theme_name_draft,
+        "selected_parameters": selected_parameters_draft,
+        "weights": weights_draft
+    })
 
     # Rerun immediat : sans lui, la legende "Modifications non
     # enregistrees" plus haut resterait affichee jusqu'a la prochaine

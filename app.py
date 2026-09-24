@@ -3,6 +3,7 @@ import streamlit as st
 from config import DEFAULT_WEIGHTS, INDICATOR_DEFAULTS
 from services.loaders import load_prepared, load_watchlist
 from services.market_data import get_structures, save_uploaded_structure
+from services.preferences import load_preferences
 from services.themes import DEFAULT_THEME, THEMES, theme_css
 
 
@@ -20,10 +21,28 @@ st.set_page_config(
 # Valeurs par defaut de l'etat partage : ce script s'execute avant CHAQUE
 # page (cf. app_pages/), donc c'est le seul endroit garanti pour les poser
 # avant que app_pages/parametres.py -- qui possede les vrais widgets -- ait
-# eu l'occasion de tourner au moins une fois dans la session.
-st.session_state.setdefault("theme_name", DEFAULT_THEME)
-st.session_state.setdefault("selected_parameters", INDICATOR_DEFAULTS)
-st.session_state.setdefault("weights", DEFAULT_WEIGHTS)
+# eu l'occasion de tourner au moins une fois dans la session. On part des
+# reglages enregistres sur disque (cf. services/preferences.py) : sans ca,
+# un simple rechargement de page (nouvelle session_state) reviendrait aux
+# reglages d'usine malgre un "Enregistrer" precedent.
+preferences = load_preferences()
+
+st.session_state.setdefault(
+    "theme_name",
+    preferences.get("theme_name")
+    if preferences.get("theme_name") in THEMES
+    else DEFAULT_THEME
+)
+
+st.session_state.setdefault(
+    "selected_parameters",
+    preferences.get("selected_parameters", INDICATOR_DEFAULTS)
+)
+
+st.session_state.setdefault(
+    "weights",
+    preferences.get("weights", DEFAULT_WEIGHTS)
+)
 
 
 # =========================================================
