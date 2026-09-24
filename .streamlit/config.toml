@@ -1,21 +1,22 @@
-# Financial AI Advisor — "Trading terminal" dark theme
-# Near-black charcoal + gold accent, distinctive from generic slate/blue
-# SaaS dashboards. Semantic green/red kept for gains/losses.
+# Financial AI Advisor — "Neon glass" dark theme
+# Deep violet-black glass background (glow dashboards) + neon green
+# terminal accent (technical/gains) + rose-pink accent (risk/losses),
+# rounded pill widgets. Distinctive from the earlier gold/charcoal look.
 
 [theme]
 base = "dark"
-primaryColor = "#E3B341"             # Warm gold — distinctive, evokes finance
-backgroundColor = "#0B0E13"          # Near-black charcoal
-secondaryBackgroundColor = "#161B23" # Card/widget background
-codeBackgroundColor = "#161B23"
-textColor = "#EDEFF2"
-linkColor = "#E3B341"
-borderColor = "#262D38"
-codeTextColor = "#C7CDD6"
+primaryColor = "#A78BFA"             # Vivid violet — buttons, links, active elements
+backgroundColor = "#0A0812"          # Near-black with a violet undertone
+secondaryBackgroundColor = "#161221" # Card/widget background, violet-tinted charcoal
+codeBackgroundColor = "#161221"
+textColor = "#F1EDFB"
+linkColor = "#A78BFA"
+borderColor = "#2A2340"
+codeTextColor = "#D8D2EC"
 showWidgetBorder = true
 showSidebarBorder = true
-baseRadius = "8px"
-buttonRadius = "8px"
+baseRadius = "12px"
+buttonRadius = "full"
 
 # Typography
 font = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
@@ -29,49 +30,49 @@ headingFontWeights = [700, 600, 600, 600, 500, 500]
 linkUnderline = false
 
 # Semantic colors
-greenColor = "#3ECF8E"   # Gains
-redColor = "#F0576B"     # Losses
-yellowColor = "#E3B341"  # Warnings (matches primary gold)
-orangeColor = "#F0954D"  # Risk / alerts
-blueColor = "#5B9DF9"    # Technical analysis accent
-violetColor = "#B18AF8"  # Machine learning accent
-grayColor = "#8A94A6"    # Neutral / secondary text
+greenColor = "#00E68A"   # Gains — neon terminal green
+redColor = "#FF4D6D"     # Losses — rose-pink
+yellowColor = "#FFC857"  # Warnings
+orangeColor = "#FF8A5B"  # Risk / alerts
+blueColor = "#4DD4F0"    # Technical analysis accent — cyan
+violetColor = "#C084FC"  # Machine learning accent
+grayColor = "#9089A8"    # Neutral / secondary text
 
 # Chart colors
 chartCategoricalColors = [
-    "#E3B341",
-    "#5B9DF9",
-    "#3ECF8E",
-    "#B18AF8",
-    "#F0576B",
-    "#F0954D",
-    "#4DD4E8",
-    "#8A94A6",
+    "#A78BFA",
+    "#00E68A",
+    "#FF4D6D",
+    "#4DD4F0",
+    "#FFC857",
+    "#C084FC",
+    "#FF8A5B",
+    "#9089A8",
 ]
 
-# Sequential colors (gold gradient, for heatmaps)
+# Sequential colors (violet -> pink glow gradient, for heatmaps)
 chartSequentialColors = [
-    "#2B2107",
-    "#453410",
-    "#6B4F18",
-    "#916A1F",
-    "#B7862A",
-    "#D3A036",
-    "#E3B341",
-    "#EBC569",
-    "#F3D89A",
-    "#FAECC9",
+    "#1B1429",
+    "#2C1E42",
+    "#3D285C",
+    "#4F3277",
+    "#603C91",
+    "#7F4FB0",
+    "#A163C8",
+    "#C77EDB",
+    "#E29BE8",
+    "#F5C2F0",
 ]
 
 # Dataframe styling
-dataframeBorderColor = "#262D38"
-dataframeHeaderBackgroundColor = "#161B23"
+dataframeBorderColor = "#2A2340"
+dataframeHeaderBackgroundColor = "#161221"
 
 # Sidebar
 [theme.sidebar]
-backgroundColor = "#0B0E13"
-secondaryBackgroundColor = "#161B23"
-codeBackgroundColor = "#161B23"
-textColor = "#EDEFF2"
-borderColor = "#262D38"
-primaryColor = "#E3B341"
+backgroundColor = "#0A0812"
+secondaryBackgroundColor = "#161221"
+codeBackgroundColor = "#161221"
+textColor = "#F1EDFB"
+borderColor = "#2A2340"
+primaryColor = "#A78BFA"

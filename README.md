@@ -73,13 +73,24 @@ venv\Scripts\pytest
 ## Structure du projet
 
 ```
-app.py                  Interface Streamlit
-config.py                Chemins, logging
+app.py                  Point d'entrée Streamlit : marque, navigation,
+                          sélection de structure (partagés par toutes
+                          les pages)
+app_pages/
+  analyse.py              Page "Analyse" : cours, graphique, décision
+  marche.py                Page "Marché" : watchlist de toutes les structures
+  journal.py               Page "Journal" : historique des analyses passées
+  parametres.py            Page "Paramètres" : palette, indicateurs, poids
+config.py                Chemins, logging, constantes UI partagées
 services/
   market_data.py         Chargement/normalisation des historiques Excel
   indicators.py           Indicateurs techniques (MM, RSI, MACD, Bollinger...)
   decision_engine.py      Score technique + ML pondéré -> décision
   predictor.py             Chargement du modèle et prédiction
+  loaders.py                Chargements Streamlit mis en cache (cours,
+                            watchlist), partagés entre les pages
+  themes.py                Palettes de couleurs personnalisables (page
+                            Paramètres) et CSS injecté pour les appliquer
 training/
   train.py                 Pipeline d'entraînement (CLI)
 tests/                    Tests pytest des modules ci-dessus

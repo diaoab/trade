@@ -39,5 +39,34 @@ PREDICTION_LOG_PATH = RESULT_DIR / "prediction_log.csv"
 REQUIRED_COLUMNS = ["Close"]
 
 
+# Constantes de l'UI Streamlit partagees entre le point d'entree (app.py,
+# qui doit pre-remplir st.session_state avant que la page "Parametres" ne
+# se soit forcement deja executee) et app_pages/parametres.py.
+INDICATOR_OPTIONS = [
+    "MM20",
+    "MM50",
+    "RSI",
+    "MACD",
+    "Bollinger",
+    "Momentum",
+    "Volatilité"
+]
+
+INDICATOR_DEFAULTS = [
+    "MM20",
+    "MM50",
+    "RSI",
+    "MACD",
+    "Momentum",
+    "Volatilité"
+]
+
+DEFAULT_WEIGHTS = {
+    "Technique": 40,
+    "Machine Learning": 40,
+    "Risque": 20
+}
+
+
 for directory in (DATA_DIR, MODEL_DIR, RESULT_DIR):
     directory.mkdir(exist_ok=True)
