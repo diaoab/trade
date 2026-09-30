@@ -7,6 +7,14 @@ import pytest
 from services import prediction_log
 
 
+@pytest.fixture(autouse=True)
+def short_horizon(monkeypatch):
+    """Horizon de jugement ramene a 5 seances : les historiques de test
+    restent ainsi lisibles a l'oeil, quel que soit l'horizon du modele."""
+
+    monkeypatch.setattr(prediction_log, "HORIZON_SESSIONS", 5)
+
+
 @pytest.fixture
 def log_path(tmp_path, monkeypatch):
 

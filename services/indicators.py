@@ -7,7 +7,7 @@ de ce module sont pures et n'appellent rien d'autre.
 
 import numpy as np
 
-from services.targets import FUTURE_HORIZON_DAYS, compute_future_return
+from services.targets import compute_future_return
 
 
 MM_SHORT = 20
@@ -36,8 +36,14 @@ RSI_OVERBOUGHT = 70
 CALIBRATION_MIN_EVENTS = 30
 CALIBRATION_MIN_T = 2
 
+# Horizon auquel on juge ce qui a suivi un extreme, en seances. Court et
+# independant de l'horizon du modele ML : c'est a 5 seances que la lecture
+# titre par titre a ete validee sans regard vers l'avenir, et un horizon
+# court donne plus vite assez d'extremes a l'issue connue pour conclure.
+CALIBRATION_HORIZON = 5
 
-def calibrate_extremes(extreme, close, horizon=FUTURE_HORIZON_DAYS):
+
+def calibrate_extremes(extreme, close, horizon=CALIBRATION_HORIZON):
     """Dit, seance par seance, comment lire un extreme sur CE titre.
 
     extreme vaut +1 sur un exces haussier (RSI en surachat, cours au-dessus

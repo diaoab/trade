@@ -14,11 +14,12 @@ import pandas as pd
 
 from config import PREDICTION_LOG_PATH
 from services.market_data import load_structure
+from services.targets import FUTURE_HORIZON_DAYS
 
 
 # Horizon auquel une decision est jugee, en seances : celui de la cible du
-# modele (cf. training.train, FUTURE_HORIZON_DAYS).
-HORIZON_SESSIONS = 5
+# modele (cf. services.targets).
+HORIZON_SESSIONS = FUTURE_HORIZON_DAYS
 
 OUTCOME_PENDING = "en attente"
 OUTCOME_RIGHT = "juste"

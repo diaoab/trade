@@ -17,6 +17,7 @@ from services.market_data import cutoff_date, get_structures
 from services.narration import build_narration
 from services.predictor import load_model_metadata
 from services.prediction_log import log_prediction
+from services.targets import FUTURE_HORIZON_DAYS
 from services.themes import CHART_COLORS, THEMES
 
 
@@ -959,7 +960,8 @@ if (
             border=True
         )
         st.metric(
-            ":material/psychology: Probabilité ML (forte perf. à 5j)",
+            ":material/psychology: Probabilité ML (forte perf. à "
+            f"{FUTURE_HORIZON_DAYS} séances)",
             f"{ml_result['probability_up'] * 100:.1f}%"
             if ml_result is not None
             else "indisponible",

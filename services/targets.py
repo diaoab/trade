@@ -10,14 +10,20 @@ import numpy as np
 import pandas as pd
 
 
-# La cible est le rendement a 5 jours plutot qu'au lendemain : moins bruite,
-# et surtout on ne retient que les seances au rendement futur clairement
+# La cible est le rendement a 60 seances (un trimestre de bourse) : sur une
+# validation annee par annee (2020 a 2025, entrainement sur les seules
+# annees precedentes), le ROC AUC depasse le hasard chaque annee a 60
+# seances (0,65 en moyenne, 0,53 au pire) alors qu'il reste autour de 0,50
+# a 5 et 20 seances. C'est aussi l'horizon ou les signaux techniques
+# couvrent les frais de courtage (cf. python -m training.backtest_engine).
+#
+# On ne retient que les seances au rendement futur clairement
 # tranche (tiers superieur = 1, tiers inferieur = 0), en ecartant le tiers
 # median, ambigu par construction. Les deux classes retenues sont alors
 # naturellement equilibrees (~50/50), contrairement au binaire hausse/baisse
 # du lendemain qui etait desequilibre (~70/30) et rendait le modele biaise
 # vers "jamais de hausse".
-FUTURE_HORIZON_DAYS = 5
+FUTURE_HORIZON_DAYS = 60
 
 TERCILE_LOWER_QUANTILE = 1 / 3
 TERCILE_UPPER_QUANTILE = 2 / 3

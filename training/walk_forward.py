@@ -278,7 +278,11 @@ def main():
 
     section(f"VALIDATION WALK-FORWARD ({N_WINDOWS} fenetres)")
 
-    cv = TimeSeriesSplit(n_splits=N_WINDOWS)
+    # gap : embargo entre entrainement et test, cf. training.train.
+    cv = TimeSeriesSplit(
+        n_splits=N_WINDOWS,
+        gap=FUTURE_HORIZON_DAYS * data["Symbol"].nunique()
+    )
 
     rows = []
 

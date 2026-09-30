@@ -167,8 +167,13 @@ results/                Sorties d'entraînement, backtest, journal
   (`calibrate_extremes`). MM20, MACD et momentum n'ont presque pas départagé
   hausses et baisses sur les titres actuels ; le score global discrimine
   donc peu.
-- **Modèle ML exclu du score tant qu'il ne bat pas la référence naïve** : il
-  reste affiché à titre indicatif.
+- **Modèle ML exclu du score tant qu'il n'a pas fait ses preuves** : il doit
+  battre la meilleure réponse constante sur le test *et* atteindre un ROC AUC
+  de 0,55. Il prévoit la performance à 60 séances, seul horizon où il dépasse
+  le hasard année après année (0,60 en validation croisée), mais il retombe
+  à 0,50 sur la dernière période (2024-2025) : il reste donc affiché à titre
+  indicatif. Un ROC AUC de 0,98 n'est pas un objectif atteignable sur des
+  cours de bourse ; un tel score signalerait une fuite de données.
 - **Dividendes saisis à la main** : les dates ex-dividende et montants se
   renseignent par structure dans Paramètres (stockés dans
   `data/structures.json`). L'historique antérieur à un détachement est alors

@@ -75,6 +75,11 @@ RANDOM_STATE = 42
 
 MINIMUM_ROWS = 50
 
+# ROC AUC de test en dessous duquel le modele est juge sans pouvoir
+# predictif utile, meme s'il bat la reference naive en accuracy (0,50 =
+# hasard).
+MIN_USEFUL_ROC_AUC = 0.55
+
 warnings.filterwarnings("ignore")
 
 
@@ -307,6 +312,31 @@ test_start = int(len(data) * (1 - TEST_SIZE))
 train_val_slice = data.iloc[:test_start]
 test_slice = data.iloc[test_start:]
 
+# Embargo : le rendement futur des dernieres seances d'entrainement
+# s'etend sur la periode de test. Les garder laisserait le modele apprendre
+# une partie de ce qu'on lui demande ensuite de prevoir, et gonflerait le
+# score de test -- d'autant plus que l'horizon est long. On ecarte donc les
+# FUTURE_HORIZON_DAYS dernieres seances avant le debut du test.
+if "Date" in data.columns:
+
+    train_dates = np.sort(train_val_slice["Date"].unique())
+
+    if len(train_dates) > FUTURE_HORIZON_DAYS:
+
+        embargo_start = train_dates[-FUTURE_HORIZON_DAYS]
+
+        before = len(train_val_slice)
+
+        train_val_slice = train_val_slice[
+            train_val_slice["Date"] < embargo_start
+        ]
+
+        print(
+            f"Embargo : {before - len(train_val_slice)} seances ecartees "
+            "avant le test (leur rendement futur chevauche la periode de "
+            "test)."
+        )
+
 if "Date" in data.columns:
 
     dates = data["Date"]
@@ -437,7 +467,14 @@ scale_pos_weight = (
     else 1.0
 )
 
-cv = TimeSeriesSplit(n_splits=CV_SPLITS)
+# gap : meme raison que l'embargo avant le test, entre chaque fenetre
+# d'entrainement et de validation. Les seances de tous les titres etant
+# empilees par date, un horizon de N seances couvre environ N x (nombre de
+# titres) lignes.
+cv = TimeSeriesSplit(
+    n_splits=CV_SPLITS,
+    gap=FUTURE_HORIZON_DAYS * data["Symbol"].nunique()
+)
 
 # Des grilles volontairement petites : avec a peine plus d'une centaine de
 # lignes d'entrainement, un grand nombre de combinaisons ne ferait
@@ -707,6 +744,14 @@ print(
 
 gain = test_scores["accuracy"] - baseline_accuracy
 
+# Battre la reference d'une poignee de seances ne prouve rien si le modele
+# ne sait pas classer les seances entre elles : un ROC AUC de 0,50 avec une
+# accuracy legerement superieure, c'est du bruit. Il faut les deux.
+beats_baseline = bool(
+    gain > 0
+    and test_scores["roc_auc"] >= MIN_USEFUL_ROC_AUC
+)
+
 print(
     f"\nReference naive : {baseline_accuracy:.4f}"
 )
@@ -716,11 +761,11 @@ print(
     f"({gain * len(y_test):+.1f} seances sur {len(y_test)})"
 )
 
-if gain <= 0:
+if not beats_baseline:
 
     print(
-        "\n[!] Le modele ne bat pas la reference naive. "
-        "Ses probabilites ne doivent pas peser dans une decision."
+        "\n[!] Le modele ne bat pas la reference naive, ou son ROC AUC "
+        f"reste sous {MIN_USEFUL_ROC_AUC}. L'application l'exclut du score."
     )
 
 print("\nClassification report :")
@@ -782,7 +827,7 @@ metadata = {
 
     "baseline_accuracy": baseline_accuracy,
 
-    "beats_baseline": bool(gain > 0)
+    "beats_baseline": beats_baseline
 
 }
 
