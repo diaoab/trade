@@ -36,7 +36,7 @@ def test_technical_score_stays_within_bounds_even_with_all_signals_bullish():
         Close=120.0,
         MM20=100.0,
         MM50=100.0,
-        RSI=10.0,
+        RSI=90.0,
         MACD=5.0,
         MACD_Signal=1.0,
         Return_5D=0.1
@@ -178,8 +178,9 @@ def test_bollinger_signals_only_outside_the_bands():
         _base_row(Close=115.0), NEUTRAL_ML_RESULT, ["Bollinger"], TECHNICAL_ONLY
     )
 
-    assert below["positive"] == 1
-    assert above["negative"] == 1
+    # Suivi de tendance : la sortie par le haut est le signal favorable.
+    assert above["positive"] == 1
+    assert below["negative"] == 1
 
 
 def test_flat_prices_give_no_bollinger_macd_or_momentum_signal():

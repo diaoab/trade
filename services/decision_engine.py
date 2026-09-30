@@ -1,10 +1,10 @@
 """Moteur de decision technique + ML.
 
-Les bonus/malus ci-dessous appliquent des conventions usuelles d'analyse
-technique (croisement de moyennes mobiles, zones de surachat/survente RSI,
-position dans les bandes de Bollinger...) : ce sont des heuristiques, pas des
-poids issus d'un backtest. Ils fixent un ordre de grandeur raisonnable entre
-signaux, sans pretention de precision predictive.
+Les bonus/malus ci-dessous sont des heuristiques d'analyse technique : ils
+fixent un ordre de grandeur raisonnable entre signaux, sans pretention de
+precision predictive. Le sens de lecture de chaque signal, lui, est confronte
+a l'historique par python -m training.backtest_engine ; c'est ce backtest qui
+a conduit a lire RSI et Bollinger en suivi de tendance (voir plus bas).
 """
 
 
@@ -129,28 +129,39 @@ def analyze(
     # RSI
     # =====================================================
 
+    # Lecture en suivi de tendance, et non a contre-courant : la convention
+    # classique (survente = occasion d'achat, surachat = signal de vente)
+    # suppose un retour a la moyenne que le backtest ne retrouve pas sur les
+    # titres du catalogue (cf. python -m training.backtest_engine). Sur
+    # 3 854 seances de BIBI CI et PALM CI, un RSI > 70 a ete suivi de +1,8 %
+    # en moyenne a 5 seances (hausse dans 53 % des cas, contre 43 % toutes
+    # seances confondues) et un RSI < 30 de -0,9 % (hausse dans 34 % des
+    # cas). Sur un marche peu liquide ou la variation quotidienne est
+    # plafonnee, un mouvement fort s'etale sur plusieurs seances.
     if "RSI" in selected_parameters:
 
         rsi = row["RSI"]
 
-        if rsi < RSI_OVERSOLD:
+        if rsi > RSI_OVERBOUGHT:
 
             technical_score += RSI_WEIGHT
 
             positive += 1
 
             reasons.append(
-                "Le RSI indique une zone de survente."
+                "Le RSI est en zone de surachat : élan haussier fort, qui "
+                "s'est le plus souvent prolongé sur ce marché."
             )
 
-        elif rsi > RSI_OVERBOUGHT:
+        elif rsi < RSI_OVERSOLD:
 
             technical_score -= RSI_WEIGHT
 
             negative += 1
 
             reasons.append(
-                "Le RSI indique une zone de surachat."
+                "Le RSI est en zone de survente : élan baissier fort, qui "
+                "s'est le plus souvent prolongé sur ce marché."
             )
 
         else:
@@ -243,26 +254,29 @@ def analyze(
             # 0 % sur la bande basse, 100 % sur la bande haute.
             position = (close - lower) / width * 100
 
-            if position <= 0:
+            # Meme lecture en suivi de tendance que le RSI, pour la meme
+            # raison : une sortie par le haut a ete suivie de +2,9 % en
+            # moyenne a 5 seances, une sortie par le bas de -0,2 %.
+            if position >= 100:
 
                 technical_score += BOLLINGER_WEIGHT
 
                 positive += 1
 
                 reasons.append(
-                    "Le cours est passé sous la bande basse de Bollinger "
-                    "(excès baissier)."
+                    "Le cours est sorti par le haut des bandes de Bollinger "
+                    "(élan haussier)."
                 )
 
-            elif position >= 100:
+            elif position <= 0:
 
                 technical_score -= BOLLINGER_WEIGHT
 
                 negative += 1
 
                 reasons.append(
-                    "Le cours est passé au-dessus de la bande haute de "
-                    "Bollinger (excès haussier)."
+                    "Le cours est sorti par le bas des bandes de Bollinger "
+                    "(élan baissier)."
                 )
 
             else:

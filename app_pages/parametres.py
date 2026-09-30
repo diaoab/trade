@@ -2,7 +2,11 @@ import pandas as pd
 import streamlit as st
 
 from config import INDICATOR_OPTIONS
-from services.loaders import load_prepared, load_watchlist
+from services.loaders import (
+    load_prepared,
+    load_signal_backtest,
+    load_watchlist
+)
 from services.market_data import (
     clean_dividends,
     cutoff_date,
@@ -243,6 +247,7 @@ if st.button(
         # dividendes.
         load_prepared.clear()
         load_watchlist.clear()
+        load_signal_backtest.clear()
 
     # Sur disque, pas seulement en session_state : sans ca, un simple
     # rechargement de page (F5) ouvre une nouvelle session et revient aux

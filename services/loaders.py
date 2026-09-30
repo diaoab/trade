@@ -7,6 +7,11 @@ script d'entree.
 
 import streamlit as st
 
+from services.backtest import (
+    replay_signals,
+    summarize_scores,
+    summarize_signals
+)
 from services.indicators import calculate_indicators
 from services.market_data import load_structure
 
@@ -82,3 +87,36 @@ def load_watchlist(symbols):
         })
 
     return rows
+
+
+@st.cache_data(show_spinner="Rejeu des signaux sur l'historique…")
+def load_signal_backtest(symbols):
+    """Backtest des signaux techniques sur les structures du catalogue
+    (cf. services.backtest). Retourne le tableau par signal, le tableau par
+    zone de score et le nombre de seances rejouees.
+
+    Mis en cache : le rejeu appelle le moteur plusieurs fois par seance.
+    """
+
+    histories = {}
+
+    for symbol in symbols:
+
+        try:
+
+            histories[symbol] = load_structure(symbol)
+
+        except (FileNotFoundError, ValueError):
+
+            continue
+
+    replayed = replay_signals(histories)
+
+    if replayed.empty:
+        return None, None, 0
+
+    return (
+        summarize_signals(replayed),
+        summarize_scores(replayed),
+        len(replayed)
+    )

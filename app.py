@@ -5,7 +5,11 @@ from config import (
     DEFAULT_WEIGHTS,
     INDICATOR_DEFAULTS
 )
-from services.loaders import load_prepared, load_watchlist
+from services.loaders import (
+    load_prepared,
+    load_signal_backtest,
+    load_watchlist
+)
 from services.market_data import get_structures, save_uploaded_structure
 from services.preferences import load_preferences
 from services.themes import DEFAULT_THEME, THEMES, theme_css
@@ -168,6 +172,7 @@ with st.sidebar.expander("Ajouter une structure", icon=":material/upload_file:")
 
                 load_prepared.clear()
                 load_watchlist.clear()
+                load_signal_backtest.clear()
 
                 st.success(
                     f"{import_report['name']} importée : "
