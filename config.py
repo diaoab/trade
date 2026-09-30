@@ -34,7 +34,7 @@ PROBA_REFERENCE_PATH = MODEL_DIR / "probability_reference.pkl"
 # meme au test walk-forward, qui reste un backtest sur donnees passees.
 PREDICTION_LOG_PATH = RESULT_DIR / "prediction_log.csv"
 
-# Reglages utilisateur (palette, indicateurs, poids) enregistres depuis la
+# Reglages utilisateur (palette, indicateurs, dividendes) enregistres depuis la
 # page Parametres : sur disque plutot qu'en st.session_state seul, pour
 # qu'ils survivent a un rechargement de page (F5 = nouvelle session cote
 # navigateur) et a un redemarrage du serveur. Prive a la machine locale,
@@ -73,6 +73,10 @@ DEFAULT_WEIGHTS = {
     "Machine Learning": 40,
     "Risque": 20
 }
+
+# Recaler l'historique des dividendes detaches avant de calculer les
+# indicateurs (cf. services.market_data.adjust_for_dividends).
+DEFAULT_ADJUST_DIVIDENDS = True
 
 
 for directory in (DATA_DIR, MODEL_DIR, RESULT_DIR):

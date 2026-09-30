@@ -149,3 +149,51 @@ def test_confidence_is_clamped_between_50_and_95():
     )["confidence"]
 
     assert neutral_confidence == 50.0
+
+
+TECHNICAL_ONLY = {"Technique": 100, "Machine Learning": 0, "Risque": 0}
+
+
+def test_bollinger_is_neutral_inside_the_bands_and_says_so():
+
+    result = analyze(
+        _base_row(),
+        NEUTRAL_ML_RESULT,
+        ["Bollinger"],
+        TECHNICAL_ONLY
+    )
+
+    assert result["neutral"] == 1
+    assert result["technical_score"] == 50
+    assert any("Bollinger" in reason for reason in result["reasons"])
+
+
+def test_bollinger_signals_only_outside_the_bands():
+
+    below = analyze(
+        _base_row(Close=85.0), NEUTRAL_ML_RESULT, ["Bollinger"], TECHNICAL_ONLY
+    )
+
+    above = analyze(
+        _base_row(Close=115.0), NEUTRAL_ML_RESULT, ["Bollinger"], TECHNICAL_ONLY
+    )
+
+    assert below["positive"] == 1
+    assert above["negative"] == 1
+
+
+def test_flat_prices_give_no_bollinger_macd_or_momentum_signal():
+    """Cours fige : bandes confondues avec le cours, MACD egal a son signal,
+    rendement nul. Aucun de ces cas ne doit compter comme un signal."""
+
+    result = analyze(
+        _base_row(Bollinger_Upper=100.0, Bollinger_Lower=100.0),
+        NEUTRAL_ML_RESULT,
+        ["MACD", "Bollinger", "Momentum"],
+        TECHNICAL_ONLY
+    )
+
+    assert result["positive"] == 0
+    assert result["negative"] == 0
+    assert result["neutral"] == 3
+    assert result["technical_score"] == 50

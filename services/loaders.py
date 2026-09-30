@@ -12,16 +12,19 @@ from services.market_data import load_structure
 
 
 @st.cache_data(show_spinner=False)
-def load_prepared(symbol):
+def load_prepared(symbol, adjust_dividends=True):
     """Charge un titre et calcule ses indicateurs.
 
     Mis en cache : sans cela, chaque interaction relancerait la lecture du
-    classeur Excel et tout le calcul.
+    classeur Excel et tout le calcul. Les dividendes eux-memes ne font pas
+    partie de la cle de cache : la page Parametres vide ce cache quand elle
+    les modifie.
     """
 
     df, report = load_structure(
         symbol,
-        with_report=True
+        with_report=True,
+        adjust_dividends=adjust_dividends
     )
 
     return calculate_indicators(df), report

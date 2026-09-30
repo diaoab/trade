@@ -1,0 +1,9 @@
+# Runtime dependencies for the Streamlit app and Excel import/export.
+streamlit
+pandas
+numpy
+plotly
+openpyxl
+joblib
+scikit-learn
+xgboost

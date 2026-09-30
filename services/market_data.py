@@ -465,7 +465,9 @@ def get_structures():
 
             "name": entry.get("name", path.stem),
 
-            "path": path
+            "path": path,
+
+            "dividends": clean_dividends(entry.get("dividends", []))
         }
 
     return structures
@@ -477,13 +479,155 @@ def register_structure(symbol, name):
 
     registry = _read_registry()
 
-    registry[symbol] = {"name": name}
+    # On ne touche qu'au nom : reimporter un classeur ne doit pas effacer
+    # les dividendes deja saisis pour ce titre.
+    registry[symbol] = {**registry.get(symbol, {}), "name": name}
 
     _write_registry(registry)
 
 
-def load_structure(symbol, with_report=False):
-    """Charge l'historique d'un titre, normalise et trie chronologiquement."""
+# =========================================================
+# DIVIDENDES
+# =========================================================
+#
+# Le jour du detachement (date ex-dividende), le cours baisse mecaniquement
+# du montant du dividende : ce n'est pas une vraie baisse, l'actionnaire a
+# touche la difference. Laissee telle quelle, cette marche d'escalier est lue
+# par les indicateurs comme un signal de vente (MACD qui plonge, cours qui
+# sort de la bande basse de Bollinger, RSI en survente). On la neutralise en
+# recalant l'historique anterieur au detachement.
+
+PRICE_COLUMNS = [
+    "Close",
+    "Open",
+    "High",
+    "Low"
+]
+
+
+def clean_dividends(entries):
+    """Ramene une saisie de dividendes a une liste triee de
+    {"ex_date": "AAAA-MM-JJ", "amount": float}, en ecartant les lignes
+    incompletes ou invalides (date illisible, montant nul ou negatif)."""
+
+    cleaned = {}
+
+    for entry in entries or []:
+
+        ex_date = pd.to_datetime(
+            entry.get("ex_date"),
+            errors="coerce"
+        )
+
+        amount = pd.to_numeric(
+            entry.get("amount"),
+            errors="coerce"
+        )
+
+        if pd.isna(ex_date) or pd.isna(amount) or amount <= 0:
+            continue
+
+        # Une seule ligne par date : la derniere saisie l'emporte.
+        cleaned[ex_date.strftime("%Y-%m-%d")] = float(amount)
+
+    return [
+        {"ex_date": ex_date, "amount": amount}
+        for ex_date, amount in sorted(cleaned.items())
+    ]
+
+
+def set_dividends(symbol, dividends):
+    """Enregistre les dividendes d'un titre dans le registre."""
+
+    registry = _read_registry()
+
+    entry = dict(registry.get(symbol, {}))
+
+    entry["dividends"] = clean_dividends(dividends)
+
+    registry[symbol] = entry
+
+    _write_registry(registry)
+
+
+def cutoff_date(ex_date):
+    """Date butoir : dernier jour ouvre avant la date ex-dividende, donc
+    derniere seance ou acheter le titre donne encore droit au dividende.
+
+    Ne connait que les week-ends : un jour ferie BRVM juste avant le
+    detachement avance la date butoir reelle d'une seance de plus.
+    """
+
+    return (
+        pd.Timestamp(ex_date) - pd.offsets.BDay(1)
+    ).normalize()
+
+
+def adjust_for_dividends(df, dividends):
+    """Recale les cours anterieurs a chaque detachement deja survenu.
+
+    Ajustement proportionnel, la convention des cours "ajustes" : tout ce
+    qui precede la date ex-dividende est multiplie par
+    1 - dividende / derniere cloture avant detachement. Les seances
+    posterieures au dernier detachement ne bougent pas, donc le cours du
+    jour reste le cours reellement cote.
+
+    Retourne le DataFrame (avec le cours d'origine conserve dans Close_Raw
+    des qu'un ajustement a eu lieu) et la liste des dividendes appliques.
+    Un detachement a venir, ou anterieur au debut de l'historique, n'a rien
+    a corriger et est ignore.
+    """
+
+    applied = []
+
+    if "Date" not in df.columns or df.empty:
+        return df, applied
+
+    price_columns = [
+        column
+        for column in PRICE_COLUMNS
+        if column in df.columns
+    ]
+
+    adjusted = df.copy()
+
+    adjusted[price_columns] = adjusted[price_columns].astype(float)
+
+    raw_close = df["Close"].astype(float)
+
+    for dividend in clean_dividends(dividends):
+
+        before = df["Date"] < pd.Timestamp(dividend["ex_date"])
+
+        if not before.any() or before.all():
+            continue
+
+        factor = 1 - dividend["amount"] / raw_close[before].iloc[-1]
+
+        # Dividende superieur ou egal au cours : saisie manifestement
+        # erronee, on ne detruit pas l'historique pour autant.
+        if factor <= 0:
+            continue
+
+        adjusted.loc[before, price_columns] *= factor
+
+        applied.append(dividend)
+
+    if not applied:
+        return df, applied
+
+    adjusted["Close_Raw"] = raw_close
+
+    return adjusted, applied
+
+
+def load_structure(symbol, with_report=False, adjust_dividends=True):
+    """Charge l'historique d'un titre, normalise et trie chronologiquement.
+
+    Par defaut les cours sont ajustes des dividendes enregistres pour ce
+    titre (cf. adjust_for_dividends) ; adjust_dividends=False rend les
+    cours bruts du fichier.
+    """
 
     structures = get_structures()
 
@@ -502,6 +646,15 @@ def load_structure(symbol, with_report=False):
     report["symbol"] = symbol
 
     report["name"] = structures[symbol]["name"]
+
+    report["dividends_applied"] = []
+
+    if adjust_dividends:
+
+        df, report["dividends_applied"] = adjust_for_dividends(
+            df,
+            structures[symbol]["dividends"]
+        )
 
     if with_report:
         return df, report

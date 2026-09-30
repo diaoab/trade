@@ -1,6 +1,14 @@
+import pandas as pd
 import streamlit as st
 
 from config import INDICATOR_OPTIONS
+from services.loaders import load_prepared, load_watchlist
+from services.market_data import (
+    clean_dividends,
+    cutoff_date,
+    get_structures,
+    set_dividends
+)
 from services.preferences import save_preferences
 from services.themes import THEMES, theme_swatch_html
 
@@ -8,16 +16,17 @@ from services.themes import THEMES, theme_swatch_html
 st.title("Paramètres")
 
 st.caption(
-    "Apparence, indicateurs techniques et pondération de l'analyse — "
+    "Apparence, indicateurs techniques et dividendes — "
     "utilisés par la page Analyse. Rien ne prend effet tant que tu n'as "
     "pas cliqué sur « Enregistrer »."
 )
 
 
 # Brouillon distinct des valeurs appliquees (session_state["theme_name"],
-# ["selected_parameters"], ["weights"], lues par app.py et par la page
+# ["selected_parameters"], lues par app.py et par la page
 # Analyse) : les widgets ci-dessous editent ce brouillon, et seul le clic
-# sur "Enregistrer" le recopie dans les valeurs appliquees. Initialise a
+# sur "Enregistrer" le recopie dans les valeurs appliquees (idem pour
+# "adjust_dividends" et le tableau des dividendes). Initialise a
 # partir de la derniere valeur appliquee, pour reprendre le fil d'une
 # session a l'autre plutot que de repartir des reglages par defaut.
 st.session_state.setdefault(
@@ -28,6 +37,11 @@ st.session_state.setdefault(
 st.session_state.setdefault(
     "selected_parameters_draft",
     st.session_state["selected_parameters"]
+)
+
+st.session_state.setdefault(
+    "adjust_dividends_draft",
+    st.session_state["adjust_dividends"]
 )
 
 
@@ -77,93 +91,117 @@ st.divider()
 
 
 # =========================================================
-# POIDS
+# DIVIDENDES
 # =========================================================
 
-st.subheader(":material/balance: Poids de l'analyse")
+st.subheader(":material/payments: Dividendes")
 
+selected_symbol = st.session_state["selected_symbol"]
 
-def weight_control(label, key, default):
-    """Curseur + champ numérique synchronisés sur le même poids.
+structure = get_structures()[selected_symbol]
 
-    Les deux widgets partagent leur valeur via session_state : modifier
-    l'un met l'autre à jour au prochain rendu. Ce sont deja des brouillons
-    page-locaux : ils n'affectent le poids reellement utilise par l'analyse
-    qu'une fois recopies dans session_state["weights"] par "Enregistrer".
-    """
+saved_dividends = structure["dividends"]
 
-    slider_key = f"{key}_weight_slider"
-    input_key = f"{key}_weight_input"
-
-    if slider_key not in st.session_state:
-        st.session_state[slider_key] = default
-        st.session_state[input_key] = default
-
-    def sync_from_slider():
-        st.session_state[input_key] = st.session_state[slider_key]
-
-    def sync_from_input():
-        st.session_state[slider_key] = st.session_state[input_key]
-
-    col_slider, col_input = st.columns([3, 1])
-
-    with col_slider:
-        st.slider(
-            label,
-            0,
-            100,
-            key=slider_key,
-            on_change=sync_from_slider
-        )
-
-    with col_input:
-        st.number_input(
-            label,
-            min_value=0,
-            max_value=100,
-            key=input_key,
-            on_change=sync_from_input,
-            label_visibility="collapsed"
-        )
-
-    return st.session_state[slider_key]
-
-
-technical_weight_draft = weight_control("Technique", "technical", 40)
-
-ml_weight_draft = weight_control("Machine Learning", "ml", 40)
-
-risk_weight_draft = weight_control("Risque", "risk", 20)
-
-
-weights_draft = {
-    "Technique": technical_weight_draft,
-    "Machine Learning": ml_weight_draft,
-    "Risque": risk_weight_draft
-}
-
-
-total_weight_draft = (
-    technical_weight_draft
-    + ml_weight_draft
-    + risk_weight_draft
+st.caption(
+    f"Détachements de **{structure['name']}** (structure choisie dans la "
+    "barre latérale). La date ex-dividende est le premier jour où le titre "
+    "cote sans son dividende ; la date butoir pour l'acheter avec droit au "
+    "dividende est la séance qui précède."
 )
 
-st.write(f"Total : {total_weight_draft}%")
+# Brouillon par structure : "Ajouter" et "Retirer" ne modifient que cette
+# liste, recopiee dans data/structures.json par "Enregistrer".
+dividends_draft_key = f"dividends_draft_{selected_symbol}"
 
+st.session_state.setdefault(dividends_draft_key, saved_dividends)
 
-if total_weight_draft == 0:
+dividends_draft = st.session_state[dividends_draft_key]
 
-    st.warning(
-        "Tous les poids sont à zéro : aucune analyse n'est possible.",
-        icon=":material/warning:"
+if not dividends_draft:
+
+    st.caption("Aucun dividende enregistré pour cette structure.")
+
+for dividend in dividends_draft:
+
+    with st.container(
+        horizontal=True,
+        horizontal_alignment="distribute",
+        vertical_alignment="center",
+        border=True
+    ):
+
+        st.markdown(
+            f"**Ex-dividende {pd.Timestamp(dividend['ex_date']):%d/%m/%Y}** "
+            f"· {dividend['amount']:g} FCFA par action · date butoir "
+            f"d'achat {cutoff_date(dividend['ex_date']):%d/%m/%Y}"
+        )
+
+        if st.button(
+            "Retirer",
+            icon=":material/delete:",
+            key=f"remove_dividend_{selected_symbol}_{dividend['ex_date']}"
+        ):
+
+            st.session_state[dividends_draft_key] = [
+                other
+                for other in dividends_draft
+                if other != dividend
+            ]
+
+            st.rerun()
+
+def add_dividend():
+    """Ajoute la saisie au brouillon et vide les deux champs. En callback :
+    c'est le seul moment ou l'on peut encore reecrire la valeur de widgets
+    deja affiches."""
+
+    st.session_state[dividends_draft_key] = clean_dividends(
+        st.session_state[dividends_draft_key]
+        + [{
+            "ex_date": st.session_state["new_dividend_ex_date"],
+            "amount": st.session_state["new_dividend_amount"]
+        }]
     )
 
-elif total_weight_draft != 100:
+    st.session_state["new_dividend_ex_date"] = None
+    st.session_state["new_dividend_amount"] = None
 
-    st.caption(
-        "Le total n'est pas 100 % : les poids sont ramenés à cette échelle."
+
+with st.container(horizontal=True, vertical_alignment="bottom"):
+
+    new_ex_date = st.date_input(
+        "Date ex-dividende",
+        value=None,
+        format="DD/MM/YYYY",
+        key="new_dividend_ex_date"
     )
+
+    new_amount = st.number_input(
+        "Dividende net par action (FCFA)",
+        min_value=0.0,
+        value=None,
+        key="new_dividend_amount"
+    )
+
+    st.button(
+        "Ajouter",
+        icon=":material/add:",
+        disabled=new_ex_date is None or not new_amount,
+        on_click=add_dividend
+    )
+
+st.caption(
+    "La date butoir est le dernier jour ouvré avant le détachement ; un "
+    "jour férié la veille l'avance d'une séance."
+)
+
+adjust_dividends_draft = st.toggle(
+    "Ajuster l'historique des dividendes détachés",
+    key="adjust_dividends_draft",
+    help="Le jour du détachement, le cours baisse mécaniquement du montant "
+    "du dividende. Sans ajustement, MACD, Bollinger et RSI lisent cette "
+    "marche comme un signal de vente. S'applique à toutes les structures."
+)
 
 
 st.divider()
@@ -176,7 +214,8 @@ st.divider()
 has_unsaved_changes = (
     theme_name_draft != st.session_state["theme_name"]
     or selected_parameters_draft != st.session_state["selected_parameters"]
-    or weights_draft != st.session_state["weights"]
+    or adjust_dividends_draft != st.session_state["adjust_dividends"]
+    or dividends_draft != saved_dividends
 )
 
 if has_unsaved_changes:
@@ -194,7 +233,16 @@ if st.button(
 
     st.session_state["theme_name"] = theme_name_draft
     st.session_state["selected_parameters"] = selected_parameters_draft
-    st.session_state["weights"] = weights_draft
+    st.session_state["adjust_dividends"] = adjust_dividends_draft
+
+    if dividends_draft != saved_dividends:
+
+        set_dividends(selected_symbol, dividends_draft)
+
+        # Les historiques en cache ont ete ajustes avec les anciens
+        # dividendes.
+        load_prepared.clear()
+        load_watchlist.clear()
 
     # Sur disque, pas seulement en session_state : sans ca, un simple
     # rechargement de page (F5) ouvre une nouvelle session et revient aux
@@ -202,7 +250,7 @@ if st.button(
     save_preferences({
         "theme_name": theme_name_draft,
         "selected_parameters": selected_parameters_draft,
-        "weights": weights_draft
+        "adjust_dividends": adjust_dividends_draft
     })
 
     # Rerun immediat : sans lui, la legende "Modifications non

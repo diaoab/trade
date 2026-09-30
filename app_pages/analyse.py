@@ -1,15 +1,18 @@
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 from plotly.subplots import make_subplots
 
 from config import DEFAULT_WEIGHTS
+from services.avatar import avatar_html
 from services.decision_engine import analyze
 from services.loaders import load_prepared
-from services.market_data import get_structures
+from services.market_data import cutoff_date, get_structures
+from services.narration import build_narration
 from services.predictor import ModelUnavailable, load_model_metadata, predict_row
 from services.prediction_log import log_prediction
-from services.themes import THEMES
+from services.themes import CHART_COLORS, THEMES
 
 
 # Colonnes sans lesquelles ni le graphique ni le moteur de decision ne
@@ -43,6 +46,8 @@ ml_weight = weights.get("Machine Learning", 0)
 risk_weight = weights.get("Risque", 0)
 total_weight = technical_weight + ml_weight + risk_weight
 
+adjust_dividends = st.session_state.get("adjust_dividends", True)
+
 active_theme = THEMES[st.session_state["theme_name"]]
 
 
@@ -69,7 +74,7 @@ st.warning(
 
 try:
 
-    df, report = load_prepared(selected_symbol)
+    df, report = load_prepared(selected_symbol, adjust_dividends)
 
 except FileNotFoundError as error:
 
@@ -139,6 +144,81 @@ if report.get("day_month_swapped"):
     )
 
 
+# =========================================================
+# DIVIDENDES
+# =========================================================
+
+dividends = [
+    {
+        "ex_date": pd.Timestamp(dividend["ex_date"]),
+        "amount": dividend["amount"]
+    }
+    for dividend in structures[selected_symbol]["dividends"]
+]
+
+# Le prochain detachement se lit par rapport a la seance analysee, pas a la
+# date du jour : rejouer une seance passee montre ce qu'on savait ce jour-la.
+upcoming_dividends = (
+    [
+        dividend
+        for dividend in dividends
+        if dividend["ex_date"] > latest["Date"]
+    ]
+    if "Date" in clean_df.columns
+    else []
+)
+
+# Repris par l'assistant vocal dans son resume (cf. services.narration).
+dividend_notice = None
+
+if upcoming_dividends:
+
+    next_dividend = upcoming_dividends[0]
+
+    dividend_cutoff = cutoff_date(next_dividend["ex_date"])
+
+    days_left = (dividend_cutoff - latest["Date"].normalize()).days
+
+    if days_left > 0:
+        countdown = f"dans {days_left} jour{'s' if days_left > 1 else ''}"
+    elif days_left == 0:
+        countdown = "c'est la séance analysée"
+    else:
+        countdown = "dépassée"
+
+    dividend_yield = (
+        next_dividend["amount"]
+        / latest.get("Close_Raw", latest["Close"])
+        * 100
+    )
+
+    dividend_notice = {
+        "cutoff": dividend_cutoff,
+        "ex_date": next_dividend["ex_date"],
+        "amount": next_dividend["amount"],
+        "days_left": days_left
+    }
+
+    st.info(
+        f"**Date butoir dividende : {dividend_cutoff:%d/%m/%Y}** "
+        f"({countdown}) — dernière séance pour acheter avec droit au "
+        f"dividende de {next_dividend['amount']:g} FCFA par action "
+        f"(rendement {dividend_yield:.1f} %). Détachement le "
+        f"{next_dividend['ex_date']:%d/%m/%Y} : le cours baisse "
+        "mécaniquement du montant du dividende ce jour-là.",
+        icon=":material/event:"
+    )
+
+if report.get("dividends_applied"):
+
+    st.caption(
+        f"Cours ajustés de {len(report['dividends_applied'])} détachement(s) "
+        "de dividende : l'historique antérieur est recalé pour que la baisse "
+        "mécanique du jour ex-dividende ne fausse pas les indicateurs. "
+        "La carte « Cours » affiche le cours réellement coté."
+    )
+
+
 ohlc_issues = report.get("ohlc_issues") or {}
 
 if ohlc_issues.get("inconsistent"):
@@ -188,13 +268,18 @@ def _delta(column):
     return f"{latest[column] - previous[column]:.2f}"
 
 
-with st.container(horizontal=True, horizontal_alignment="distribute", wrap=False):
+# Cours reellement cote : Close_Raw existe des que l'historique a ete ajuste
+# d'un dividende (cf. services.market_data.adjust_for_dividends).
+quoted_close = "Close_Raw" if "Close_Raw" in clean_df.columns else "Close"
+
+
+with st.container(horizontal=True, horizontal_alignment="distribute"):
     st.metric(
         "Cours",
-        f"{latest['Close']:.2f}",
-        delta=_delta("Close"),
+        f"{latest[quoted_close]:.2f}",
+        delta=_delta(quoted_close),
         border=True,
-        chart_data=recent_window["Close"],
+        chart_data=recent_window[quoted_close],
         chart_type="line"
     )
     st.metric(
@@ -243,7 +328,7 @@ with st.container(border=True):
 
         trained_at = pd.to_datetime(model_metadata["trained_at"])
 
-        with st.container(horizontal=True, wrap=False):
+        with st.container(horizontal=True):
 
             st.metric(
                 "ROC AUC (test)",
@@ -274,8 +359,8 @@ analyze_button = st.button(
 if total_weight == 0 or not selected_parameters:
 
     st.caption(
-        "Configure au moins un indicateur et un poids non nul dans "
-        "**Paramètres** avant d'analyser."
+        "Sélectionne au moins un indicateur dans **Paramètres** avant "
+        "d'analyser."
     )
 
     st.page_link(
@@ -398,7 +483,7 @@ fig.add_trace(
 
 for column, label, color in [
     ("MM20", "MM20", active_theme["primary"]),
-    ("MM50", "MM50", active_theme["accent_a"])
+    ("MM50", "MM50", CHART_COLORS["mm50"])
 ]:
 
     fig.add_trace(
@@ -416,9 +501,12 @@ for column, label, color in [
 
 if "Bollinger" in selected_parameters:
 
-    for column, label in [
-        ("Bollinger_Upper", "Bollinger haute"),
-        ("Bollinger_Lower", "Bollinger basse")
+    # Bande basse puis bande haute, dans cet ordre : fill="tonexty" remplit
+    # jusqu'a la trace precedente, ce qui colore le canal entre les deux.
+    # La bande mediane n'est pas retracee : c'est la MM20, deja affichee.
+    for column, label, fill in [
+        ("Bollinger_Lower", "Bollinger basse", None),
+        ("Bollinger_Upper", "Bollinger haute", "tonexty")
     ]:
 
         fig.add_trace(
@@ -427,7 +515,9 @@ if "Bollinger" in selected_parameters:
                 y=display_df[column],
                 name=label,
                 mode="lines",
-                line=dict(dash="dot", color=active_theme["accent_c"])
+                line=dict(width=1, color=CHART_COLORS["bollinger"]),
+                fill=fill,
+                fillcolor=_fill_color(CHART_COLORS["bollinger"], 0.12)
             ),
             row=1,
             col=1
@@ -447,7 +537,7 @@ if show_rsi:
             y=display_df["RSI"],
             name="RSI",
             mode="lines",
-            line=dict(color=active_theme["accent_b"])
+            line=dict(color=CHART_COLORS["rsi"])
         ),
         row=current_row,
         col=1
@@ -458,7 +548,8 @@ if show_rsi:
         fig.add_hline(
             y=level,
             line_dash="dot",
-            line_color=active_theme["border"],
+            line_color=active_theme["text"],
+            opacity=0.35,
             row=current_row,
             col=1
         )
@@ -497,7 +588,7 @@ if show_macd:
             y=display_df["MACD"],
             name="MACD",
             mode="lines",
-            line=dict(color=active_theme["accent_a"])
+            line=dict(color=CHART_COLORS["macd"])
         ),
         row=current_row,
         col=1
@@ -509,8 +600,16 @@ if show_macd:
             y=display_df["MACD_Signal"],
             name="Signal",
             mode="lines",
-            line=dict(color=active_theme["accent_c"])
+            line=dict(color=CHART_COLORS["macd_signal"])
         ),
+        row=current_row,
+        col=1
+    )
+
+    fig.add_hline(
+        y=0,
+        line_color=active_theme["text"],
+        opacity=0.35,
         row=current_row,
         col=1
     )
@@ -522,14 +621,53 @@ if show_macd:
     )
 
 
+# Detachements de dividende visibles sur la periode : un trait vertical sur
+# toute la hauteur, pour relier d'un coup d'oeil un decrochage du cours ou
+# des indicateurs a sa cause.
+if "Date" in display_df.columns:
+
+    for dividend in dividends:
+
+        if not (
+            display_df["Date"].iloc[0]
+            <= dividend["ex_date"]
+            <= display_df["Date"].iloc[-1]
+        ):
+            continue
+
+        fig.add_shape(
+            type="line",
+            x0=dividend["ex_date"],
+            x1=dividend["ex_date"],
+            y0=0,
+            y1=1,
+            xref="x",
+            yref="paper",
+            line=dict(color=CHART_COLORS["dividend"], width=1, dash="dash")
+        )
+
+        fig.add_annotation(
+            x=dividend["ex_date"],
+            y=1,
+            xref="x",
+            yref="paper",
+            text=f"Ex-div. {dividend['amount']:g}",
+            showarrow=False,
+            yanchor="bottom",
+            font=dict(color=CHART_COLORS["dividend"], size=11)
+        )
+
+
 fig.update_layout(
     height=350 * rows,
     hovermode="x unified",
     xaxis_title="Date" if rows == 1 else None,
+    # Legende sous le graphique : au-dessus, elle passe sur plusieurs lignes
+    # des que la page est etroite et vient recouvrir les courbes.
     legend=dict(
         orientation="h",
-        yanchor="bottom",
-        y=1.02,
+        yanchor="top",
+        y=-0.08,
         xanchor="left",
         x=0,
         font=dict(color=active_theme["text"])
@@ -571,7 +709,7 @@ fig.update_yaxes(
 # theme=None : on pilote nous-memes toutes les couleurs du graphique
 # (cf. ci-dessus) pour qu'il suive la palette choisie dans Parametres
 # plutot que le theme statique de config.toml.
-st.plotly_chart(fig, width="stretch", theme=None)
+st.plotly_chart(fig, theme=None)
 
 
 # =========================================================
@@ -622,7 +760,54 @@ if analyze_button:
         weights=weights
     )
 
+    # Conserve en session : sans cela le resultat disparaitrait au premier
+    # rerun (changer la periode du graphique, par exemple). "session" sert a
+    # ne le reafficher que pour la structure et la seance qu'il decrit.
+    st.session_state["last_analysis"] = {
+        "symbol": selected_symbol,
+        "session": latest.name,
+        "adjust_dividends": adjust_dividends,
+        "result": result,
+        "ml_result": ml_result,
+        "selected_parameters": selected_parameters,
+        "weights": weights
+    }
+
+
+last_analysis = st.session_state.get("last_analysis")
+
+if (
+    last_analysis is not None
+    and last_analysis["symbol"] == selected_symbol
+    and last_analysis["session"] == latest.name
+    and last_analysis["adjust_dividends"] == adjust_dividends
+):
+
+    result = last_analysis["result"]
+    ml_result = last_analysis["ml_result"]
+
     st.header(":material/query_stats: Résultat de l'analyse", divider=True)
+
+    # =====================================================
+    # ASSISTANT VOCAL
+    # =====================================================
+
+    components.html(
+        avatar_html(
+            build_narration(
+                structure_name=structures[selected_symbol]["name"],
+                session_date=(
+                    latest["Date"]
+                    if "Date" in clean_df.columns
+                    else None
+                ),
+                result=result,
+                dividend=dividend_notice
+            ),
+            active_theme
+        ),
+        height=230
+    )
 
     if model_metadata is not None:
 
@@ -646,23 +831,20 @@ if analyze_button:
         st.warning(decision, icon=":material/trending_flat:")
 
 
-    with st.container(horizontal=True, wrap=False):
+    with st.container(horizontal=True):
         st.metric(
-            "Score global",
+            ":material/speed: Score global",
             f"{result['score']}/100",
-            icon=":material/speed:",
             border=True
         )
         st.metric(
-            "Confiance",
+            ":material/verified: Confiance",
             f"{result['confidence']}%",
-            icon=":material/verified:",
             border=True
         )
         st.metric(
-            "Probabilité ML (forte perf. à 5j)",
+            ":material/psychology: Probabilité ML (forte perf. à 5j)",
             f"{ml_result['probability_up'] * 100:.1f}%",
-            icon=":material/psychology:",
             border=True
         )
 
@@ -673,25 +855,22 @@ if analyze_button:
 
     st.subheader(":material/donut_small: Détail des scores")
 
-    with st.container(horizontal=True, wrap=False):
+    with st.container(horizontal=True):
         st.metric(
-            "Analyse technique",
+            ":material/show_chart: Analyse technique",
             f"{result['technical_score']}/100",
-            icon=":material/show_chart:",
             border=True
         )
         st.metric(
-            "Machine Learning",
+            ":material/psychology: Machine Learning",
             f"{result['ml_score']}/100",
-            icon=":material/psychology:",
             border=True
         )
         st.metric(
-            "Risque",
+            ":material/shield: Risque",
             f"{result['risk_score']}/100"
             if result["risk_score"] is not None
             else "non mesuré",
-            icon=":material/shield:",
             border=True
         )
 
@@ -721,14 +900,24 @@ if analyze_button:
 
         st.markdown("**Paramètres utilisés**")
 
-        st.write(", ".join(selected_parameters))
+        st.write(", ".join(last_analysis["selected_parameters"]))
 
         st.markdown("**Pondération**")
 
         st.write(
-            f"Technique : {technical_weight} % · "
-            f"Machine Learning : {ml_weight} % · "
-            f"Risque : {risk_weight} %"
+            " · ".join(
+                f"{name} : {weight} %"
+                for name, weight in last_analysis["weights"].items()
+            )
+        )
+
+        st.markdown("**Dividendes**")
+
+        st.write(
+            f"{len(report['dividends_applied'])} détachement(s) neutralisé(s) "
+            "dans l'historique."
+            if report.get("dividends_applied")
+            else "Cours bruts, sans ajustement de dividende."
         )
 
 

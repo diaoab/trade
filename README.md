@@ -16,9 +16,18 @@ Nécessite Python 3.14 (voir `venv/pyvenv.cfg` pour la version exacte utilisée
 en développement).
 
 ```bash
-python -m venv venv
-venv\Scripts\pip install -r requirements.txt
+python -m venv .venv
+python -m pip install -r requirements.txt
 ```
+
+Active l'environnement virtuel avant de lancer l'application. Sur Windows,
+utilise `.venv\\Scripts\\activate` ; sur macOS ou Linux,
+`source .venv/bin/activate`.
+
+`openpyxl` est inclus dans les dépendances d'exécution : il est nécessaire à
+Pandas pour lire les fichiers Excel `.xlsx` importés dans l'application. Si
+les autres dépendances sont déjà installées, tu peux aussi corriger
+l'environnement actuel avec `python -m pip install openpyxl`.
 
 Pour lancer les tests, installe en plus les dépendances de développement :
 
@@ -80,7 +89,8 @@ app_pages/
   analyse.py              Page "Analyse" : cours, graphique, décision
   marche.py                Page "Marché" : watchlist de toutes les structures
   journal.py               Page "Journal" : historique des analyses passées
-  parametres.py            Page "Paramètres" : palette, indicateurs, poids
+  parametres.py            Page "Paramètres" : palette, indicateurs,
+                            dividendes (dates ex-dividende)
 config.py                Chemins, logging, constantes UI partagées
 services/
   market_data.py         Chargement/normalisation des historiques Excel
@@ -110,6 +120,12 @@ results/                 Sorties d'entraînement : comparaison de modèles,
 - **Moteur de décision heuristique** : les poids de `decision_engine.py`
   (croisement de moyennes mobiles, zones RSI...) suivent des conventions
   usuelles d'analyse technique mais n'ont pas été validés par un backtest.
+- **Dividendes saisis à la main** : les dates ex-dividende et montants se
+  renseignent par structure dans Paramètres (stockés dans
+  `data/structures.json`). L'historique antérieur à un détachement est alors
+  recalé avant le calcul des indicateurs, à l'entraînement comme dans l'app ;
+  la date butoir d'achat ne tient compte que des week-ends, pas des jours
+  fériés BRVM.
 - **Pas de flux de données en direct** : les cotations s'importent
   manuellement (fichier Excel), il n'y a pas de connexion à un flux BRVM.
 - **Fichiers Excel non versionnés** : `data/*.xlsx` est dans `.gitignore`

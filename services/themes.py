@@ -124,6 +124,22 @@ THEMES = {
 DEFAULT_THEME = "Violet Glow"
 
 
+# Couleurs des courbes du graphique d'analyse. Volontairement hors palette :
+# les accents d'un theme sont choisis pour decorer l'interface, et certains
+# sont identiques au fond des cartes (dans "Braise", accent_a est la couleur
+# de fond du graphique) -- une courbe tracee avec disparait. Ces teintes
+# restent lisibles sur tous les fonds sombres proposes ci-dessus, et
+# distinctes entre elles a l'interieur d'un meme panneau.
+CHART_COLORS = {
+    "mm50": "#F5B041",
+    "bollinger": "#9AA8C7",
+    "rsi": "#C084FC",
+    "macd": "#4DD4F0",
+    "macd_signal": "#FF9F5B",
+    "dividend": "#F5E663",
+}
+
+
 def theme_css(theme):
     """Construit le CSS qui applique `theme` par-dessus le thème statique.
 

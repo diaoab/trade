@@ -1,6 +1,10 @@
 import streamlit as st
 
-from config import DEFAULT_WEIGHTS, INDICATOR_DEFAULTS
+from config import (
+    DEFAULT_ADJUST_DIVIDENDS,
+    DEFAULT_WEIGHTS,
+    INDICATOR_DEFAULTS
+)
 from services.loaders import load_prepared, load_watchlist
 from services.market_data import get_structures, save_uploaded_structure
 from services.preferences import load_preferences
@@ -39,9 +43,14 @@ st.session_state.setdefault(
     preferences.get("selected_parameters", INDICATOR_DEFAULTS)
 )
 
+# Ponderation fixe : le reglage a ete retire de la page Parametres. On
+# ignore volontairement d'anciens poids restes dans preferences.json, qui
+# continueraient sinon a s'appliquer sans plus pouvoir etre modifies.
+st.session_state["weights"] = DEFAULT_WEIGHTS
+
 st.session_state.setdefault(
-    "weights",
-    preferences.get("weights", DEFAULT_WEIGHTS)
+    "adjust_dividends",
+    bool(preferences.get("adjust_dividends", DEFAULT_ADJUST_DIVIDENDS))
 )
 
 

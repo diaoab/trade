@@ -125,11 +125,18 @@ def calculate_indicators(df):
     # MACD
     # ==============================
 
+    # min_periods : une moyenne exponentielle part de la toute premiere
+    # cloture et met du temps a s'en detacher. Sans periode de chauffe, le
+    # MACD afficherait des valeurs des la premiere seance (0, puis un ecart
+    # artificiellement petit) alors que MM, Bollinger et RSI restent vides
+    # tant que leur fenetre n'est pas pleine. La valeur une fois la chauffe
+    # passee est inchangee.
     ema_fast = (
         df["Close"]
         .ewm(
             span=MACD_FAST,
-            adjust=False
+            adjust=False,
+            min_periods=MACD_FAST
         )
         .mean()
     )
@@ -138,7 +145,8 @@ def calculate_indicators(df):
         df["Close"]
         .ewm(
             span=MACD_SLOW,
-            adjust=False
+            adjust=False,
+            min_periods=MACD_SLOW
         )
         .mean()
     )
@@ -151,7 +159,8 @@ def calculate_indicators(df):
         df["MACD"]
         .ewm(
             span=MACD_SIGNAL,
-            adjust=False
+            adjust=False,
+            min_periods=MACD_SIGNAL
         )
         .mean()
     )

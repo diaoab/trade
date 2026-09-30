@@ -114,3 +114,22 @@ def test_volume_ratio_only_added_when_volume_present():
     with_volume = calculate_indicators(with_volume)
 
     assert "Volume_Ratio" in with_volume.columns
+
+
+def test_macd_is_empty_during_warm_up_then_matches_the_reference_formula():
+
+    df = calculate_indicators(_make_close_series())
+
+    # 26 seances pour la moyenne lente, puis 9 valeurs de MACD pour le signal.
+    assert df["MACD"].iloc[:25].isna().all()
+    assert df["MACD_Signal"].iloc[:33].isna().all()
+    assert df["MACD_Signal"].iloc[33:].notna().all()
+
+    expected = (
+        df["Close"].ewm(span=12, adjust=False).mean()
+        - df["Close"].ewm(span=26, adjust=False).mean()
+    )
+
+    pd.testing.assert_series_equal(
+        df["MACD"].iloc[25:], expected.iloc[25:], check_names=False
+    )

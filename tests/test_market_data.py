@@ -7,6 +7,8 @@ from services.market_data import (
     _count_inversions,
     _swap_day_month,
     _to_numeric,
+    adjust_for_dividends,
+    cutoff_date,
     normalize_columns,
     parse_dates,
     prepare_dataframe
@@ -151,3 +153,58 @@ def test_prepare_dataframe_sorts_and_deduplicates_by_date():
     assert prepared["Close"].tolist() == [90.0, 101.0]
 
     assert report["rows_out"] == 2
+
+
+# =========================================================
+# DIVIDENDES
+# =========================================================
+
+def _history():
+
+    return pd.DataFrame({
+        "Date": pd.to_datetime(
+            ["2025-06-09", "2025-06-10", "2025-06-11", "2025-06-12"]
+        ),
+        "Close": [1000.0, 1000.0, 900.0, 900.0]
+    })
+
+
+def test_dividend_adjustment_removes_the_ex_date_drop():
+    """Un dividende de 100 detache le 11/06 explique toute la baisse de 1000
+    a 900 : une fois ajuste, l'historique ne montre plus aucune marche."""
+
+    adjusted, applied = adjust_for_dividends(
+        _history(),
+        [{"ex_date": "2025-06-11", "amount": 100}]
+    )
+
+    assert applied == [{"ex_date": "2025-06-11", "amount": 100.0}]
+    assert adjusted["Close"].tolist() == [900.0, 900.0, 900.0, 900.0]
+    assert adjusted["Close_Raw"].tolist() == [1000.0, 1000.0, 900.0, 900.0]
+
+
+def test_upcoming_or_invalid_dividends_leave_history_untouched():
+
+    history = _history()
+
+    adjusted, applied = adjust_for_dividends(
+        history,
+        [
+            {"ex_date": "2026-06-11", "amount": 100},
+            {"ex_date": "2020-01-01", "amount": 100},
+            {"ex_date": "2025-06-11", "amount": 5000},
+            {"ex_date": "pas une date", "amount": 100},
+            {"ex_date": "2025-06-11", "amount": None}
+        ]
+    )
+
+    assert applied == []
+    assert "Close_Raw" not in adjusted.columns
+    assert adjusted["Close"].tolist() == history["Close"].tolist()
+
+
+def test_cutoff_date_is_the_previous_business_day():
+
+    # Detachement un lundi : la date butoir est le vendredi precedent.
+    assert cutoff_date("2025-06-16") == pd.Timestamp("2025-06-13")
+    assert cutoff_date("2025-06-12") == pd.Timestamp("2025-06-11")

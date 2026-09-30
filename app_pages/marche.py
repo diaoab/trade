@@ -19,7 +19,7 @@ watchlist = load_watchlist(tuple(structures.keys()))
 gainers = sum(1 for row in watchlist if (row["pct"] or 0) > 0)
 losers = sum(1 for row in watchlist if (row["pct"] or 0) < 0)
 
-with st.container(horizontal=True, wrap=False):
+with st.container(horizontal=True):
 
     st.metric("Structures suivies", len(watchlist), border=True)
     st.metric("En hausse", gainers, border=True)

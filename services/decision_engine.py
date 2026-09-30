@@ -167,24 +167,48 @@ def analyze(
 
     if "MACD" in selected_parameters:
 
-        if row["MACD"] > row["MACD_Signal"]:
+        macd = row["MACD"]
+
+        macd_gap = macd - row["MACD_Signal"]
+
+        # La position par rapport a zero dit la tendance de fond (moyenne
+        # courte au-dessus ou en dessous de la longue) ; le croisement avec
+        # la ligne de signal dit si elle accelere ou s'essouffle. Seul le
+        # croisement deplace le score, la ligne zero nuance l'explication.
+        trend = (
+            "au-dessus de zéro, tendance de fond haussière"
+            if macd > 0
+            else "en dessous de zéro, tendance de fond baissière"
+        )
+
+        if macd_gap > 0:
 
             technical_score += MACD_WEIGHT
 
             positive += 1
 
             reasons.append(
-                "Le MACD est supérieur à sa ligne de signal."
+                f"Le MACD est supérieur à sa ligne de signal ({trend})."
             )
 
-        else:
+        elif macd_gap < 0:
 
             technical_score -= MACD_WEIGHT
 
             negative += 1
 
             reasons.append(
-                "Le MACD est inférieur à sa ligne de signal."
+                f"Le MACD est inférieur à sa ligne de signal ({trend})."
+            )
+
+        else:
+
+            # Cours fige sur une longue periode : MACD et signal se
+            # confondent, il n'y a ni croisement haussier ni baissier.
+            neutral += 1
+
+            reasons.append(
+                "Le MACD se confond avec sa ligne de signal."
             )
 
     # =====================================================
@@ -199,29 +223,56 @@ def analyze(
 
         lower = row["Bollinger_Lower"]
 
-        if close <= lower:
+        width = upper - lower
 
-            technical_score += BOLLINGER_WEIGHT
+        if not width > 0:
 
-            positive += 1
-
-            reasons.append(
-                "Le cours se situe près de la bande basse de Bollinger."
-            )
-
-        elif close >= upper:
-
-            technical_score -= BOLLINGER_WEIGHT
-
-            negative += 1
+            # Vingt seances sans aucune variation (frequent sur les titres
+            # peu liquides) : les deux bandes se confondent avec le cours.
+            # Sans ce cas, "cours <= bande basse" serait vrai et donnerait
+            # un faux signal d'achat.
+            neutral += 1
 
             reasons.append(
-                "Le cours se situe près de la bande haute de Bollinger."
+                "Les bandes de Bollinger sont resserrées sur le cours "
+                "(aucune variation récente) : pas de signal."
             )
 
         else:
 
-            neutral += 1
+            # 0 % sur la bande basse, 100 % sur la bande haute.
+            position = (close - lower) / width * 100
+
+            if position <= 0:
+
+                technical_score += BOLLINGER_WEIGHT
+
+                positive += 1
+
+                reasons.append(
+                    "Le cours est passé sous la bande basse de Bollinger "
+                    "(excès baissier)."
+                )
+
+            elif position >= 100:
+
+                technical_score -= BOLLINGER_WEIGHT
+
+                negative += 1
+
+                reasons.append(
+                    "Le cours est passé au-dessus de la bande haute de "
+                    "Bollinger (excès haussier)."
+                )
+
+            else:
+
+                neutral += 1
+
+                reasons.append(
+                    "Le cours évolue à l'intérieur des bandes de Bollinger "
+                    f"(à {position:.0f} % entre la basse et la haute)."
+                )
 
     # =====================================================
     # MOMENTUM
@@ -239,7 +290,7 @@ def analyze(
                 "Le momentum sur 5 jours est positif."
             )
 
-        else:
+        elif row["Return_5D"] < 0:
 
             technical_score -= MOMENTUM_WEIGHT
 
@@ -247,6 +298,14 @@ def analyze(
 
             reasons.append(
                 "Le momentum sur 5 jours est négatif."
+            )
+
+        else:
+
+            neutral += 1
+
+            reasons.append(
+                "Le cours est inchangé sur 5 jours."
             )
 
     # =====================================================
