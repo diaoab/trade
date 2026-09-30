@@ -262,5 +262,10 @@ def test_reimporting_a_structure_completes_its_history(tmp_path, monkeypatch):
 
     assert history["Close"].tolist() == [100.0, 101.0, 105.0, 106.0]
 
+    # Un nom ecrit autrement designe la meme structure ; un autre, non.
+    assert market_data.match_structure_name("titrex") == "Titre X"
+    assert market_data.match_structure_name("TITRE_X") == "Titre X"
+    assert market_data.match_structure_name("Titre Y") == "Titre Y"
+
     # Les dividendes saisis survivent a la mise a jour.
     assert len(market_data.get_structures()[symbol]["dividends"]) == 1

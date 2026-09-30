@@ -4,8 +4,7 @@ import streamlit as st
 from config import INDICATOR_OPTIONS
 from services.loaders import (
     load_prepared,
-    load_signal_backtest,
-    load_watchlist
+    load_signal_backtest
 )
 from services.market_data import (
     clean_dividends,
@@ -56,6 +55,11 @@ st.session_state.setdefault(
 st.session_state.setdefault(
     "round_trip_fee_draft",
     st.session_state["round_trip_fee"]
+)
+
+st.session_state.setdefault(
+    "benchmark_symbol_draft",
+    st.session_state["benchmark_symbol"]
 )
 
 
@@ -306,6 +310,37 @@ st.divider()
 
 
 # =========================================================
+# INDICE DE REFERENCE
+# =========================================================
+
+st.subheader(":material/leaderboard: Indice de référence")
+
+benchmark_options = [None] + list(get_structures())
+
+# Indice retire du catalogue depuis l'enregistrement : on retombe sur
+# "Aucun" plutot que de planter sur une option absente.
+if st.session_state.get("benchmark_symbol_draft") not in benchmark_options:
+    st.session_state["benchmark_symbol_draft"] = None
+
+benchmark_symbol_draft = st.selectbox(
+    "Structure servant d'indice",
+    options=benchmark_options,
+    format_func=lambda symbol: (
+        "Aucun"
+        if symbol is None
+        else get_structures()[symbol]["name"]
+    ),
+    key="benchmark_symbol_draft",
+    help="Importe l'historique de l'indice (BRVM Composite, par exemple) "
+    "comme une structure, puis choisis-le ici : la page Analyse compare "
+    "alors chaque titre à cet indice."
+)
+
+
+st.divider()
+
+
+# =========================================================
 # FRAIS
 # =========================================================
 
@@ -341,6 +376,7 @@ has_unsaved_changes = (
     or selected_parameters_draft != st.session_state["selected_parameters"]
     or adjust_dividends_draft != st.session_state["adjust_dividends"]
     or round_trip_fee_draft != st.session_state["round_trip_fee"]
+    or benchmark_symbol_draft != st.session_state["benchmark_symbol"]
     or dividends_draft != saved_dividends
     or holidays_draft != saved_holidays
 )
@@ -362,6 +398,7 @@ if st.button(
     st.session_state["selected_parameters"] = selected_parameters_draft
     st.session_state["adjust_dividends"] = adjust_dividends_draft
     st.session_state["round_trip_fee"] = round_trip_fee_draft
+    st.session_state["benchmark_symbol"] = benchmark_symbol_draft
 
     if holidays_draft != saved_holidays:
 
@@ -374,7 +411,6 @@ if st.button(
         # Les historiques en cache ont ete ajustes avec les anciens
         # dividendes.
         load_prepared.clear()
-        load_watchlist.clear()
         load_signal_backtest.clear()
 
     # Sur disque, pas seulement en session_state : sans ca, un simple
@@ -384,7 +420,8 @@ if st.button(
         "theme_name": theme_name_draft,
         "selected_parameters": selected_parameters_draft,
         "adjust_dividends": adjust_dividends_draft,
-        "round_trip_fee": round_trip_fee_draft
+        "round_trip_fee": round_trip_fee_draft,
+        "benchmark_symbol": benchmark_symbol_draft
     })
 
     # Rerun immediat : sans lui, la legende "Modifications non

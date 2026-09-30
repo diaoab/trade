@@ -24,6 +24,9 @@ data/_archive/
 # machine, pas des donnees de projet a partager.
 data/preferences.json
 
+# Portefeuille de l'utilisateur : donnees personnelles.
+data/portfolio.json
+
 # Tests
 .pytest_cache/
 

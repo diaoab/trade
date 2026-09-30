@@ -15,6 +15,7 @@ from streamlit.testing.v1 import AppTest
 
 from services import (
     loaders,
+    portfolio,
     market_data,
     prediction_log,
     predictor,
@@ -38,24 +39,48 @@ def sandbox(tmp_path, monkeypatch):
         "Volume": rng.integers(1, 500, sessions)
     }).to_excel(tmp_path / "TEST.xlsx", index=False)
 
+    # Seconde structure, declaree indice de reference dans les reglages :
+    # la page Analyse affiche alors la comparaison a l'indice.
+    pd.DataFrame({
+        "Date": pd.bdate_range("2025-01-01", periods=sessions),
+        "Close": 200 + np.cumsum(rng.normal(0, 1, sessions))
+    }).to_excel(tmp_path / "ZINDICE.xlsx", index=False)
+
+    (tmp_path / "preferences.json").write_text(
+        '{"benchmark_symbol": "ZINDICE"}',
+        encoding="utf-8"
+    )
+
     monkeypatch.setattr(market_data, "DATA_DIR", tmp_path)
     monkeypatch.setattr(market_data, "REGISTRY_PATH", tmp_path / "structures.json")
     monkeypatch.setattr(preferences, "PREFERENCES_PATH", tmp_path / "preferences.json")
     monkeypatch.setattr(prediction_log, "PREDICTION_LOG_PATH", tmp_path / "log.csv")
     monkeypatch.setattr(trading_calendar, "HOLIDAYS_PATH", tmp_path / "holidays.json")
+    monkeypatch.setattr(portfolio, "PORTFOLIO_PATH", tmp_path / "portfolio.json")
 
     # Pas de modele : l'analyse doit aboutir sur la seule base technique.
     for name in ("MODEL_PATH", "FEATURES_PATH", "MODEL_METADATA_PATH"):
         monkeypatch.setattr(predictor, name, tmp_path / "absent")
 
+    # Un dividende deja detache et un a venir, une ligne en portefeuille :
+    # les pages Marche, Portefeuille et Dividendes ont de quoi s'afficher.
     market_data.set_dividends(
         "TEST",
-        [{"ex_date": "2025-04-01", "amount": 20}]
+        [
+            {"ex_date": "2025-04-01", "amount": 20},
+            {"ex_date": "2025-08-04", "amount": 25}
+        ]
     )
+
+    portfolio.save_positions([{
+        "symbol": "TEST",
+        "quantity": 10,
+        "buy_price": 990,
+        "buy_date": "2025-02-03"
+    }])
 
     for cached in (
         loaders.load_prepared,
-        loaders.load_watchlist,
         loaders.load_signal_backtest
     ):
         cached.clear()
@@ -117,6 +142,11 @@ def test_analysis_page_renders_and_analyses(sandbox):
         for header in app.header
     )
 
+    assert any(
+        "Face à l'indice" in markdown.value
+        for markdown in app.markdown
+    )
+
     # L'analyse a ete tracee dans le journal (temporaire).
     assert len(prediction_log.load_prediction_log()) == 1
 
@@ -125,6 +155,8 @@ def test_analysis_page_renders_and_analyses(sandbox):
     "page",
     [
         "app_pages/marche.py",
+        "app_pages/portefeuille.py",
+        "app_pages/dividendes.py",
         "app_pages/journal.py",
         "app_pages/parametres.py"
     ]

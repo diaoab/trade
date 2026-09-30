@@ -1,5 +1,6 @@
 """Chargement du modele partage et prediction sur une seance."""
 
+import functools
 import json
 import logging
 
@@ -21,6 +22,22 @@ class ModelUnavailable(RuntimeError):
     """Le modele n'a pas encore ete entraine, ou n'est plus lisible."""
 
 
+@functools.lru_cache(maxsize=8)
+def _load_file(path, modified_at):
+    """joblib.load mis en memoire : relire le modele a chaque prediction
+    coutait pres d'une demi-seconde, multipliee par le nombre de titres sur
+    les pages Marche, Portefeuille et Dividendes. La date de modification
+    fait partie de la cle, pour qu'un reentrainement soit pris en compte
+    sans redemarrer l'application."""
+
+    return joblib.load(path)
+
+
+def _load(path):
+
+    return _load_file(path, path.stat().st_mtime_ns)
+
+
 def load_model():
 
     if not MODEL_PATH.exists():
@@ -31,7 +48,7 @@ def load_model():
 
     try:
 
-        return joblib.load(MODEL_PATH)
+        return _load(MODEL_PATH)
 
     except Exception as error:
 
@@ -53,7 +70,7 @@ def load_features():
             "Lance d'abord : python -m training.train"
         )
 
-    return joblib.load(FEATURES_PATH)
+    return _load(FEATURES_PATH)
 
 
 def load_probability_reference():
@@ -67,7 +84,7 @@ def load_probability_reference():
 
     try:
 
-        return joblib.load(PROBA_REFERENCE_PATH)
+        return _load(PROBA_REFERENCE_PATH)
 
     except Exception:
 
@@ -136,9 +153,11 @@ def predict_row(row, model=None, features=None):
 
     X = values.to_frame().T.astype(float)
 
-    prediction = model.predict(X)[0]
-
     probabilities = model.predict_proba(X)[0]
+
+    # Classe la plus probable : ce que renverrait model.predict, sans
+    # refaire passer la seance dans le modele (le plus couteux ici).
+    prediction = model.classes_[probabilities.argmax()]
 
     probability_up = float(probabilities[1])
 

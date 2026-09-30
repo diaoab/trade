@@ -11,7 +11,7 @@ from services.assistant_chat import (
     stream_answer
 )
 from services.avatar import avatar_html
-from services.analysis import analyse_session
+from services.analysis import analyse_session, relative_performance
 from services.loaders import load_prepared
 from services.market_data import cutoff_date, get_structures
 from services.narration import build_narration
@@ -311,6 +311,54 @@ with st.container(horizontal=True, horizontal_alignment="distribute"):
         chart_data=recent_window["RSI"],
         chart_type="line"
     )
+
+
+# =========================================================
+# COMPARAISON A L'INDICE
+# =========================================================
+
+benchmark_symbol = st.session_state.get("benchmark_symbol")
+
+if (
+    benchmark_symbol in structures
+    and benchmark_symbol != selected_symbol
+    and "Date" in clean_df.columns
+):
+
+    try:
+
+        benchmark_df, _ = load_prepared(benchmark_symbol, adjust_dividends)
+
+    except (FileNotFoundError, ValueError):
+
+        benchmark_df = None
+
+    comparison = (
+        relative_performance(df, benchmark_df, latest["Date"])
+        if benchmark_df is not None and "Date" in benchmark_df.columns
+        else []
+    )
+
+    if comparison:
+
+        benchmark_name = structures[benchmark_symbol]["name"]
+
+        with st.container(border=True):
+
+            st.markdown(
+                f"**:material/leaderboard: Face à l'indice {benchmark_name}**"
+            )
+
+            with st.container(horizontal=True):
+
+                for row in comparison:
+
+                    st.metric(
+                        f"{row['period']} · indice "
+                        f"{row['benchmark'] * 100:+.1f} %",
+                        f"{row['stock'] * 100:+.1f} %",
+                        delta=f"{row['gap'] * 100:+.1f} pts vs indice"
+                    )
 
 
 # =========================================================

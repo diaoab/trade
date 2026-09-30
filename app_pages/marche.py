@@ -1,21 +1,8 @@
-import pandas as pd
 import streamlit as st
 
-from config import DEFAULT_WEIGHTS
-from services.analysis import analyse_session
-from services.loaders import load_prepared, load_watchlist
-from services.market_data import cutoff_date, get_structures
-from services.predictor import load_model_metadata
+from services.analysis import CUTOFF_ALERT_DAYS
+from services.loaders import market_overview
 
-
-# Memes colonnes que la page Analyse : sans elles, pas de signal.
-CORE_INDICATORS = [
-    "MM20",
-    "MM50",
-    "RSI",
-    "MACD",
-    "MACD_Signal"
-]
 
 DECISION_COLORS = {
     "ACHETER": "green",
@@ -33,91 +20,70 @@ st.caption(
 )
 
 
-structures = get_structures()
-
-watchlist = load_watchlist(tuple(structures.keys()))
-
-selected_parameters = st.session_state.get("selected_parameters", [])
-
-weights = st.session_state.get("weights", DEFAULT_WEIGHTS)
-
-adjust_dividends = st.session_state.get("adjust_dividends", True)
-
-model_metadata = load_model_metadata()
+overview = market_overview()
 
 
-def latest_signal(symbol):
-    """Decision du moteur sur la derniere seance du titre, ou None s'il n'a
-    pas assez d'historique ou qu'aucun indicateur n'est selectionne."""
+# =========================================================
+# QUOI DE NEUF
+# =========================================================
 
-    if not selected_parameters:
-        return None, None
+news = []
 
-    try:
+for row in overview:
 
-        prepared, _ = load_prepared(symbol, adjust_dividends)
+    for change in row["changes"]:
+        news.append(f"**{row['name']}** : {change}.")
 
-    except (FileNotFoundError, ValueError):
+    dividend = row["dividend"]
 
-        return None, None
+    if dividend is not None and 0 <= dividend["days_left"] <= CUTOFF_ALERT_DAYS:
 
-    usable = prepared.dropna(subset=CORE_INDICATORS)
+        news.append(
+            f"**{row['name']}** : date butoir de dividende le "
+            f"{dividend['cutoff']:%d/%m/%Y} "
+            + (
+                f"(dans {dividend['days_left']} j)"
+                if dividend["days_left"] > 0
+                else "(c'est la dernière séance connue)"
+            )
+            + f", {dividend['amount']:g} FCFA par action."
+        )
 
-    if usable.empty:
-        return None, None
+with st.container(border=True):
 
-    session = usable.iloc[-1]
+    st.markdown("**:material/notifications: Quoi de neuf**")
 
-    result, _, _ = analyse_session(
-        session,
-        selected_parameters,
-        weights,
-        model_metadata
-    )
+    if news:
 
-    return result, session.get("Date")
+        for line in news:
+            st.markdown(f"- {line}")
 
+    else:
 
-def next_cutoff(symbol, session_date):
-    """Prochaine date butoir de dividende apres la derniere seance."""
-
-    if session_date is None:
-        return None
-
-    for dividend in structures[symbol]["dividends"]:
-
-        if pd.Timestamp(dividend["ex_date"]) > session_date:
-
-            cutoff = cutoff_date(dividend["ex_date"])
-
-            return {
-                "cutoff": cutoff,
-                "amount": dividend["amount"],
-                "days_left": (cutoff - session_date.normalize()).days
-            }
-
-    return None
+        st.caption(
+            "Rien de notable depuis la séance précédente : aucun signal n'a "
+            "basculé, aucun RSI n'est entré en zone extrême, aucune date "
+            "butoir de dividende dans les "
+            f"{CUTOFF_ALERT_DAYS} jours."
+        )
 
 
-for row in watchlist:
+# =========================================================
+# VUE D'ENSEMBLE
+# =========================================================
 
-    row["result"], session_date = latest_signal(row["symbol"])
-
-    row["dividend"] = next_cutoff(row["symbol"], session_date)
-
-
-gainers = sum(1 for row in watchlist if (row["pct"] or 0) > 0)
-losers = sum(1 for row in watchlist if (row["pct"] or 0) < 0)
+gainers = sum(1 for row in overview if (row["pct"] or 0) > 0)
+losers = sum(1 for row in overview if (row["pct"] or 0) < 0)
 
 buy_signals = sum(
     1
-    for row in watchlist
+    for row in overview
     if row["result"] and row["result"]["decision"] == "ACHETER"
 )
 
 with st.container(horizontal=True):
 
-    st.metric("Structures suivies", len(watchlist), border=True)
+    st.metric("Structures suivies", len(overview), border=True)
     st.metric("En hausse", gainers, border=True)
     st.metric("En baisse", losers, border=True)
     st.metric("Signaux d'achat", buy_signals, border=True)
@@ -131,20 +97,20 @@ market_filter = st.pills(
     label_visibility="collapsed"
 )
 
-filtered = watchlist
+filtered = overview
 
 if market_filter == "Hausse":
-    filtered = [row for row in watchlist if (row["pct"] or 0) > 0]
+    filtered = [row for row in overview if (row["pct"] or 0) > 0]
 elif market_filter == "Baisse":
-    filtered = [row for row in watchlist if (row["pct"] or 0) < 0]
+    filtered = [row for row in overview if (row["pct"] or 0) < 0]
 elif market_filter == "Signal d'achat":
     filtered = [
         row
-        for row in watchlist
+        for row in overview
         if row["result"] and row["result"]["decision"] == "ACHETER"
     ]
 elif market_filter == "Dividende à venir":
-    filtered = [row for row in watchlist if row["dividend"]]
+    filtered = [row for row in overview if row["dividend"]]
 
 
 if not filtered:
@@ -168,7 +134,7 @@ for row in filtered:
             vertical_alignment="center"
         ):
 
-            st.write(f"**{structures[row['symbol']]['name']}**")
+            st.write(f"**{row['name']}**")
 
             st.write(
                 f"{row['close']:.2f}  :{pct_color}[{pct_text}]"

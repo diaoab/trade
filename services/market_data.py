@@ -688,6 +688,31 @@ def load_all_structures():
     return loaded
 
 
+def _name_key(name):
+    """Forme de comparaison d'un nom : lettres et chiffres seuls, en
+    majuscules. "Palm CI", "PALM_CI" et "palmci" donnent "PALMCI"."""
+
+    return re.sub(r"[^A-Z0-9]+", "", _normalize_label(name).upper())
+
+
+def match_structure_name(name):
+    """Renvoie le nom de la structure existante que `name` designe, ou
+    `name` tel quel s'il n'en designe aucune.
+
+    Evite qu'un export nomme "PALMCI.xlsx" cree un doublon de la structure
+    "PALM CI" au lieu de completer son historique.
+    """
+
+    key = _name_key(name)
+
+    for symbol, structure in get_structures().items():
+
+        if key in (_name_key(structure["name"]), _name_key(symbol)):
+            return structure["name"]
+
+    return name
+
+
 def save_uploaded_structure(uploaded_file, name):
     """Valide puis enregistre un classeur depose depuis l'application.
 

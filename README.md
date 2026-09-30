@@ -112,31 +112,44 @@ résultat (synthèse vocale du navigateur, gratuite).
 
 ```
 app.py                  Point d'entrée Streamlit : marque, navigation,
-                          sélection de structure (partagés par toutes
-                          les pages)
+                          import de structures, sélection de structure
 app_pages/
-  analyse.py              Page "Analyse" : cours, graphique, décision
-  marche.py                Page "Marché" : watchlist de toutes les structures
-  journal.py               Page "Journal" : historique des analyses passées
-  parametres.py            Page "Paramètres" : palette, indicateurs,
-                            dividendes (dates ex-dividende)
-config.py                Chemins, logging, constantes UI partagées
+  analyse.py              Cours, graphique, comparaison à l'indice,
+                            décision, assistants vocal et conversationnel
+  marche.py               Signal de chaque structure, « Quoi de neuf »
+  portefeuille.py         Lignes détenues, plus-value, dividendes, frais
+  dividendes.py           Rendement et calendrier des détachements
+  journal.py              Analyses passées confrontées au cours réel,
+                            backtest des signaux (5, 20, 60 séances)
+  parametres.py           Palette, indicateurs, dividendes, jours fériés,
+                            indice de référence, frais de courtage
+config.py               Chemins, logging, valeurs par défaut partagées
 services/
-  market_data.py         Chargement/normalisation des historiques Excel
-  indicators.py           Indicateurs techniques (MM, RSI, MACD, Bollinger...)
+  market_data.py          Chargement/normalisation des historiques Excel,
+                            dividendes, import
+  indicators.py           Indicateurs techniques et lecture des extrêmes
+                            calibrée titre par titre
   decision_engine.py      Score technique + ML pondéré -> décision
-  predictor.py             Chargement du modèle et prédiction
-  loaders.py                Chargements Streamlit mis en cache (cours,
-                            watchlist), partagés entre les pages
-  themes.py                Palettes de couleurs personnalisables (page
-                            Paramètres) et CSS injecté pour les appliquer
+  analysis.py             Analyse d'une séance, partagée entre les pages
+  backtest.py             Rejeu des signaux sur l'historique
+  predictor.py            Chargement du modèle et prédiction
+  portfolio.py            Positions saisies et leur valorisation
+  trading_calendar.py     Jours fériés BRVM
+  prediction_log.py       Journal des analyses
+  narration.py, avatar.py Assistant vocal
+  assistant_chat.py       Assistant conversationnel (API Claude)
+  loaders.py              Chargements Streamlit mis en cache
+  themes.py               Palettes de couleurs
 training/
-  train.py                 Pipeline d'entraînement (CLI)
-tests/                    Tests pytest des modules ci-dessus
-data/                     Historiques .xlsx (non versionnés, voir .gitignore)
-models/                  Modèle entraîné (non versionné, régénérable)
-results/                 Sorties d'entraînement : comparaison de modèles,
-                          importance des variables, dataset préparé
+  train.py                Entraînement du modèle ML (CLI)
+  walk_forward.py         Stabilité du modèle dans le temps (CLI)
+  backtest_engine.py      Backtest des signaux techniques (CLI)
+tests/                  Tests pytest, dont un test de fumée des pages
+data/                   Historiques .xlsx, portefeuille et réglages
+                          (non versionnés), registre des structures et
+                          jours fériés saisis
+models/                 Modèle entraîné (non versionné, régénérable)
+results/                Sorties d'entraînement, backtest, journal
 ```
 
 ## Limites connues

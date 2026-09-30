@@ -18,6 +18,8 @@ class FakeModel:
     l'entree -- suffisant pour tester le cablage de predict_row(), pas
     l'exactitude d'un vrai modele."""
 
+    classes_ = np.array([0, 1])
+
     def __init__(self, prediction=1, probability_up=0.7):
 
         self.prediction = prediction

@@ -8,10 +8,13 @@ from config import (
 )
 from services.loaders import (
     load_prepared,
-    load_signal_backtest,
-    load_watchlist
+    load_signal_backtest
 )
-from services.market_data import get_structures, save_uploaded_structure
+from services.market_data import (
+    get_structures,
+    match_structure_name,
+    save_uploaded_structure
+)
 from services.preferences import load_preferences
 from services.themes import DEFAULT_THEME, THEMES, theme_css
 
@@ -58,6 +61,13 @@ st.session_state.setdefault(
     bool(preferences.get("adjust_dividends", DEFAULT_ADJUST_DIVIDENDS))
 )
 
+# Structure servant d'indice de reference (BRVM Composite importe comme une
+# structure), ou None.
+st.session_state.setdefault(
+    "benchmark_symbol",
+    preferences.get("benchmark_symbol")
+)
+
 st.session_state.setdefault(
     "round_trip_fee",
     float(preferences.get("round_trip_fee", DEFAULT_ROUND_TRIP_FEE))
@@ -101,6 +111,16 @@ pages = [
         icon=":material/storefront:"
     ),
     st.Page(
+        "app_pages/portefeuille.py",
+        title="Portefeuille",
+        icon=":material/account_balance_wallet:"
+    ),
+    st.Page(
+        "app_pages/dividendes.py",
+        title="Dividendes",
+        icon=":material/payments:"
+    ),
+    st.Page(
         "app_pages/journal.py",
         title="Journal",
         icon=":material/history:"
@@ -140,49 +160,65 @@ st.sidebar.divider()
 st.sidebar.header(":material/database: Structure")
 
 
-with st.sidebar.expander("Ajouter une structure", icon=":material/upload_file:"):
+with st.sidebar.expander("Ajouter des structures", icon=":material/upload_file:"):
 
-    uploaded_file = st.file_uploader(
-        "Historique Excel (.xlsx)",
-        type=["xlsx"]
+    uploaded_files = st.file_uploader(
+        "Historiques Excel (.xlsx)",
+        type=["xlsx"],
+        accept_multiple_files=True,
+        help="Un fichier par titre ; tu peux en déposer plusieurs d'un coup."
     )
 
+    # Un seul fichier : le nom se choisit librement. Plusieurs : chacun
+    # prend le nom de son fichier, pour ne pas avoir a les saisir un a un.
     structure_name = st.text_input(
         "Nom de la structure",
-        help="Reprends le nom exact d'une structure existante pour "
-        "compléter son historique avec les séances du nouveau fichier."
+        disabled=len(uploaded_files) > 1,
+        placeholder="Nom du fichier par défaut",
+        help="Un nom déjà présent dans le catalogue (même écrit sans "
+        "espace) complète l'historique de cette structure au lieu d'en "
+        "créer une nouvelle."
     )
 
     if st.button("Importer", icon=":material/file_upload:", width="stretch"):
 
-        if uploaded_file is None:
+        if not uploaded_files:
 
-            st.error("Choisis un fichier.")
-
-        elif not structure_name.strip():
-
-            st.error("Donne un nom à la structure.")
+            st.error("Choisis au moins un fichier.")
 
         else:
 
-            try:
+            imported = 0
 
-                symbol, import_report = save_uploaded_structure(
-                    uploaded_file,
-                    structure_name
+            for uploaded_file in uploaded_files:
+
+                name = (
+                    structure_name.strip()
+                    if len(uploaded_files) == 1 and structure_name.strip()
+                    else uploaded_file.name.rsplit(".", 1)[0]
                 )
 
-            except ValueError as error:
+                # "PALMCI" rejoint la structure "PALM CI" deja en base.
+                name = match_structure_name(name)
 
-                st.error(str(error))
+                try:
 
-            else:
+                    symbol, import_report = save_uploaded_structure(
+                        uploaded_file,
+                        name
+                    )
 
-                load_prepared.clear()
-                load_watchlist.clear()
-                load_signal_backtest.clear()
+                except ValueError as error:
 
-                st.success(
+                    st.error(f"{uploaded_file.name} : {error}")
+
+                    continue
+
+                imported += 1
+
+                # st.toast : survit au rerun ci-dessous, contrairement a
+                # st.success.
+                st.toast(
                     (
                         f"{import_report['name']} mise à jour : "
                         f"{import_report['rows_added']} nouvelle(s) "
@@ -190,18 +226,25 @@ with st.sidebar.expander("Ajouter une structure", icon=":material/upload_file:")
                         if import_report["updated"]
                         else f"{import_report['name']} importée : "
                         f"{import_report['rows_out']} séances."
+                    )
+                    + (
+                        " Jour et mois étaient inversés dans le fichier, "
+                        "les dates ont été rétablies."
+                        if import_report.get("day_month_swapped")
+                        else ""
                     ),
                     icon=":material/check_circle:"
                 )
 
-                if import_report.get("day_month_swapped"):
+            if imported:
 
-                    st.info(
-                        "Jour et mois étaient inversés dans le fichier, "
-                        "les dates ont été rétablies."
-                    )
+                load_prepared.clear()
+                load_signal_backtest.clear()
 
-                st.rerun()
+                # Rien a relancer si tout a echoue : les erreurs doivent
+                # rester a l'ecran.
+                if imported == len(uploaded_files):
+                    st.rerun()
 
 
 structures = get_structures()
@@ -213,7 +256,7 @@ if not structures:
     )
 
     st.info(
-        "Utilise « Ajouter une structure » dans la barre latérale pour "
+        "Utilise « Ajouter des structures » dans la barre latérale pour "
         "importer un fichier Excel de cotations."
     )
 
