@@ -14,6 +14,11 @@ from services.market_data import (
     set_dividends
 )
 from services.preferences import save_preferences
+from services.trading_calendar import (
+    computed_holidays,
+    load_extra_holidays,
+    save_extra_holidays
+)
 from services.themes import THEMES, theme_swatch_html
 
 
@@ -113,6 +118,16 @@ st.caption(
     "dividende est la séance qui précède."
 )
 
+# Jours feries saisis a la main : brouillon initialise ici parce que les
+# dates butoir affichees plus bas en dependent, edite dans le volet "Jours
+# fériés BRVM" en bas de section.
+saved_holidays = load_extra_holidays()
+
+st.session_state.setdefault("holidays_draft", saved_holidays)
+
+holidays_draft = st.session_state["holidays_draft"]
+
+
 # Brouillon par structure : "Ajouter" et "Retirer" ne modifient que cette
 # liste, recopiee dans data/structures.json par "Enregistrer".
 dividends_draft_key = f"dividends_draft_{selected_symbol}"
@@ -137,7 +152,8 @@ for dividend in dividends_draft:
         st.markdown(
             f"**Ex-dividende {pd.Timestamp(dividend['ex_date']):%d/%m/%Y}** "
             f"· {dividend['amount']:g} FCFA par action · date butoir "
-            f"d'achat {cutoff_date(dividend['ex_date']):%d/%m/%Y}"
+            "d'achat "
+            f"{cutoff_date(dividend['ex_date'], holidays_draft):%d/%m/%Y}"
         )
 
         if st.button(
@@ -195,9 +211,82 @@ with st.container(horizontal=True, vertical_alignment="bottom"):
     )
 
 st.caption(
-    "La date butoir est le dernier jour ouvré avant le détachement ; un "
-    "jour férié la veille l'avance d'une séance."
+    "La date butoir est la dernière séance avant le détachement : elle "
+    "saute les week-ends et les jours fériés de la BRVM."
 )
+
+
+def add_holiday():
+
+    if st.session_state["new_holiday"] is not None:
+
+        st.session_state["holidays_draft"] = sorted(
+            set(st.session_state["holidays_draft"])
+            | {st.session_state["new_holiday"]}
+        )
+
+    st.session_state["new_holiday"] = None
+
+
+with st.expander("Jours fériés BRVM", icon=":material/event_busy:"):
+
+    this_year = pd.Timestamp.today().year
+
+    st.caption(
+        "Déjà pris en compte chaque année, sans rien saisir : "
+        + ", ".join(
+            f"{name} ({day:%d/%m})"
+            for day, name in sorted(computed_holidays(this_year).items())
+        )
+        + f" — dates {this_year}."
+    )
+
+    st.caption(
+        "Les fêtes musulmanes (lendemain de la Nuit du Destin, Ramadan, "
+        "Tabaski, Maouloud) sont fixées chaque année par décret : ajoute "
+        "ici leurs dates, ainsi que toute autre fermeture exceptionnelle."
+    )
+
+    for holiday in holidays_draft:
+
+        with st.container(
+            horizontal=True,
+            horizontal_alignment="distribute",
+            vertical_alignment="center"
+        ):
+
+            st.write(f"{holiday:%d/%m/%Y}")
+
+            if st.button(
+                "Retirer",
+                icon=":material/delete:",
+                key=f"remove_holiday_{holiday}"
+            ):
+
+                st.session_state["holidays_draft"] = [
+                    other
+                    for other in holidays_draft
+                    if other != holiday
+                ]
+
+                st.rerun()
+
+    with st.container(horizontal=True, vertical_alignment="bottom"):
+
+        new_holiday = st.date_input(
+            "Jour de fermeture",
+            value=None,
+            format="DD/MM/YYYY",
+            key="new_holiday"
+        )
+
+        st.button(
+            "Ajouter",
+            icon=":material/add:",
+            key="add_holiday",
+            disabled=new_holiday is None,
+            on_click=add_holiday
+        )
 
 adjust_dividends_draft = st.toggle(
     "Ajuster l'historique des dividendes détachés",
@@ -220,6 +309,7 @@ has_unsaved_changes = (
     or selected_parameters_draft != st.session_state["selected_parameters"]
     or adjust_dividends_draft != st.session_state["adjust_dividends"]
     or dividends_draft != saved_dividends
+    or holidays_draft != saved_holidays
 )
 
 if has_unsaved_changes:
@@ -238,6 +328,10 @@ if st.button(
     st.session_state["theme_name"] = theme_name_draft
     st.session_state["selected_parameters"] = selected_parameters_draft
     st.session_state["adjust_dividends"] = adjust_dividends_draft
+
+    if holidays_draft != saved_holidays:
+
+        save_extra_holidays(holidays_draft)
 
     if dividends_draft != saved_dividends:
 

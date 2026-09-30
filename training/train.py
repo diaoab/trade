@@ -383,17 +383,26 @@ print(y_train_val.value_counts().sort_index().to_string())
 
 section("REFERENCE NAIVE")
 
-majority_class = int(y_train_val.mode().iloc[0])
+# La reference est la MEILLEURE des deux reponses constantes sur le test, et
+# non la classe majoritaire de l'entrainement : la cible par terciles rend
+# l'entrainement equilibre (~50/50), si bien que sa "classe majoritaire"
+# tient au hasard, alors que le test peut pencher nettement d'un cote. Avec
+# un test a 62 % de hausses, la reference "toujours baisse" tombait a 38 %
+# et n'importe quel modele la battait, meme sans aucun pouvoir predictif.
+constant_accuracies = {
+    constant: accuracy_score(
+        y_test,
+        np.full(len(y_test), constant)
+    )
+    for constant in (0, 1)
+}
 
-baseline_predictions = np.full(
-    len(y_test),
-    majority_class
+majority_class = max(
+    constant_accuracies,
+    key=constant_accuracies.get
 )
 
-baseline_accuracy = accuracy_score(
-    y_test,
-    baseline_predictions
-)
+baseline_accuracy = constant_accuracies[majority_class]
 
 print(
     f"Strategie : repondre toujours "

@@ -6,11 +6,11 @@ from plotly.subplots import make_subplots
 
 from config import DEFAULT_WEIGHTS
 from services.avatar import avatar_html
-from services.decision_engine import analyze
+from services.analysis import analyse_session
 from services.loaders import load_prepared
 from services.market_data import cutoff_date, get_structures
 from services.narration import build_narration
-from services.predictor import ModelUnavailable, load_model_metadata, predict_row
+from services.predictor import load_model_metadata
 from services.prediction_log import log_prediction
 from services.themes import CHART_COLORS, THEMES
 
@@ -739,28 +739,13 @@ if analyze_button:
 
         st.stop()
 
-    try:
-
-        ml_result = predict_row(latest)
-
-    except ModelUnavailable:
-
-        # Le moteur sait conclure sans modele (cf. decision_engine) :
-        # l'absence du modele est signalee plus bas, avec le resultat.
-        ml_result = None
-
-    # Un modele qui ne bat pas la reference naive n'a pas montre qu'il
-    # prevoyait quoi que ce soit : le laisser peser dans le score reviendrait
-    # a y melanger du bruit. Il reste affiche, a titre indicatif.
-    if model_metadata is not None and not model_metadata["beats_baseline"]:
-
-        weights = {**weights, "Machine Learning": 0}
-
-    result = analyze(
+    # Modele absent, ou modele qui ne bat pas la reference naive : geres
+    # par analyse_session, et signales plus bas avec le resultat.
+    result, ml_result, weights = analyse_session(
         latest,
-        ml_result,
         selected_parameters,
-        weights
+        weights,
+        model_metadata
     )
 
     # Trace de cette analyse, avant que le resultat reel ne soit connu : seule

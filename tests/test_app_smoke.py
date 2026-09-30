@@ -13,7 +13,14 @@ import pandas as pd
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from services import loaders, market_data, prediction_log, predictor, preferences
+from services import (
+    loaders,
+    market_data,
+    prediction_log,
+    predictor,
+    preferences,
+    trading_calendar
+)
 
 
 @pytest.fixture
@@ -35,6 +42,7 @@ def sandbox(tmp_path, monkeypatch):
     monkeypatch.setattr(market_data, "REGISTRY_PATH", tmp_path / "structures.json")
     monkeypatch.setattr(preferences, "PREFERENCES_PATH", tmp_path / "preferences.json")
     monkeypatch.setattr(prediction_log, "PREDICTION_LOG_PATH", tmp_path / "log.csv")
+    monkeypatch.setattr(trading_calendar, "HOLIDAYS_PATH", tmp_path / "holidays.json")
 
     # Pas de modele : l'analyse doit aboutir sur la seule base technique.
     for name in ("MODEL_PATH", "FEATURES_PATH", "MODEL_METADATA_PATH"):

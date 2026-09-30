@@ -14,6 +14,7 @@ import unicodedata
 import pandas as pd
 
 from config import DATA_DIR, REGISTRY_PATH, REQUIRED_COLUMNS
+from services.trading_calendar import previous_trading_day
 
 
 logger = logging.getLogger(__name__)
@@ -550,17 +551,16 @@ def set_dividends(symbol, dividends):
     _write_registry(registry)
 
 
-def cutoff_date(ex_date):
-    """Date butoir : dernier jour ouvre avant la date ex-dividende, donc
-    derniere seance ou acheter le titre donne encore droit au dividende.
+def cutoff_date(ex_date, extra_holidays=None):
+    """Date butoir : derniere seance avant la date ex-dividende, donc
+    dernier jour ou acheter le titre donne encore droit au dividende.
 
-    Ne connait que les week-ends : un jour ferie BRVM juste avant le
-    detachement avance la date butoir reelle d'une seance de plus.
+    Saute les week-ends et les jours feries de la BRVM (cf.
+    services.trading_calendar) ; les fetes mobiles ne sont prises en compte
+    que si elles ont ete saisies dans Parametres.
     """
 
-    return (
-        pd.Timestamp(ex_date) - pd.offsets.BDay(1)
-    ).normalize()
+    return previous_trading_day(ex_date, extra_holidays)
 
 
 def adjust_for_dividends(df, dividends):
