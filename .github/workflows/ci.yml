@@ -6,15 +6,28 @@ on:
 
 jobs:
   test:
-    runs-on: windows-latest
+    # Les deux bouts de ce qui est reellement utilise : le poste de
+    # developpement (macOS, Python 3.9) et la cible la plus recente
+    # (Windows, Python 3.14). Une API Streamlit absente de l'une des deux
+    # versions installees fait echouer tests/test_app_smoke.py.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            python-version: "3.9"
+          - os: windows-latest
+            python-version: "3.14"
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python-version }}
 
-      - run: pip install -r requirements-dev.txt
+      - run: python -m pip install -r requirements-dev.txt
 
-      - run: pytest
+      - run: python -m pytest

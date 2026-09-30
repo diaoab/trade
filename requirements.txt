@@ -1,9 +1,12 @@
-# Runtime dependencies for the Streamlit app and Excel import/export.
-streamlit
-pandas
-numpy
-plotly
-openpyxl
-joblib
-scikit-learn
-xgboost
+# Dependances d'execution de l'application Streamlit et de l'entrainement.
+# Bornes basses = versions avec lesquelles les tests passent sous
+# Python 3.9 ; rien n'interdit des versions plus recentes.
+streamlit>=1.50
+pandas>=2.2
+numpy>=2.0
+plotly>=6.0
+openpyxl>=3.1
+joblib>=1.4
+scikit-learn>=1.6
+# Sur macOS, xgboost a besoin d'OpenMP : brew install libomp
+xgboost>=2.1

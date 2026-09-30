@@ -12,17 +12,22 @@ la moindre conclusion.
 
 ## Installation
 
-Nécessite Python 3.14 (voir `venv/pyvenv.cfg` pour la version exacte utilisée
-en développement).
+Fonctionne de Python 3.9 à 3.14 (les deux sont testés par la CI).
 
 ```bash
 python -m venv .venv
+```
+
+Active ensuite l'environnement virtuel — `source .venv/bin/activate` sur
+macOS ou Linux, `.venv\\Scripts\\activate` sur Windows — puis installe les
+dépendances :
+
+```bash
 python -m pip install -r requirements.txt
 ```
 
-Active l'environnement virtuel avant de lancer l'application. Sur Windows,
-utilise `.venv\\Scripts\\activate` ; sur macOS ou Linux,
-`source .venv/bin/activate`.
+Sur macOS, l'entraînement du modèle (xgboost) demande en plus
+`brew install libomp`.
 
 `openpyxl` est inclus dans les dépendances d'exécution : il est nécessaire à
 Pandas pour lire les fichiers Excel `.xlsx` importés dans l'application. Si
@@ -32,21 +37,18 @@ l'environnement actuel avec `python -m pip install openpyxl`.
 Pour lancer les tests, installe en plus les dépendances de développement :
 
 ```bash
-venv\Scripts\pip install -r requirements-dev.txt
+python -m pip install -r requirements-dev.txt
 ```
 
-> Si `venv` a été copié ou déplacé après sa création, les scripts
-> `venv\Scripts\*.exe` (streamlit.exe, pip.exe...) gardent un chemin Python
-> figé et échouent avec *"Unable to create process"*. Passe par le module à
-> la place (`python -m streamlit run app.py`), ou réinstalle ces scripts avec
-> `python -m pip install --force-reinstall --no-deps streamlit`.
+Toutes les commandes ci-dessous passent par `python -m ...`, environnement
+virtuel activé : la même ligne fonctionne sur macOS, Linux et Windows.
 
 ## Utilisation
 
 **Lancer l'application :**
 
 ```bash
-venv\Scripts\streamlit run app.py
+python -m streamlit run app.py
 ```
 
 Elle lit les historiques `.xlsx` du dossier `data/` (un fichier par titre ;
@@ -59,7 +61,7 @@ tolérés.
 **Entraîner (ou réentraîner) le modèle ML :**
 
 ```bash
-venv\Scripts\python -m training.train
+python -m training.train
 ```
 
 Empile tous les titres de `data/`, calcule les indicateurs, sélectionne le
@@ -76,8 +78,21 @@ meilleur modèle par validation croisée glissante, puis sauvegarde dans
 **Lancer les tests :**
 
 ```bash
-venv\Scripts\pytest
+python -m pytest
 ```
+
+Les tests incluent un test de fumée (`tests/test_app_smoke.py`) qui lance
+réellement chaque page : c'est lui qui signale une fonction Streamlit
+absente de la version installée.
+
+**Rejouer les signaux techniques sur l'historique :**
+
+```bash
+python -m training.backtest_engine
+```
+
+Montre ce que le cours a fait après chaque signal (tableau repris dans la
+page Journal).
 
 ## Structure du projet
 
