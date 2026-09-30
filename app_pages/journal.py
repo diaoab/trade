@@ -1,6 +1,10 @@
 import streamlit as st
 
-from services.backtest import HORIZON_SESSIONS as BACKTEST_HORIZON
+from services.backtest import (
+    HORIZONS as BACKTEST_HORIZONS,
+    summarize_scores,
+    summarize_signals
+)
 from services.loaders import load_signal_backtest
 from services.market_data import get_structures
 from services.prediction_log import (
@@ -137,18 +141,28 @@ else:
 
 st.subheader(":material/science: Fiabilité historique des signaux")
 
+fee = st.session_state.get("round_trip_fee", 0.0)
+
 st.caption(
-    "Ce que le cours a fait dans les "
-    f"{BACKTEST_HORIZON} séances qui ont suivi chaque signal technique, sur "
-    "tout l'historique des structures du catalogue. Un signal n'apporte "
-    "quelque chose que s'il s'écarte nettement de la première ligne."
+    "Ce que le cours a fait après chaque signal technique, sur tout "
+    "l'historique des structures du catalogue. Un signal n'apporte quelque "
+    "chose que s'il s'écarte nettement de la première ligne, et n'est "
+    "exploitable que si sa variation reste positive une fois les frais "
+    f"d'un aller-retour déduits ({fee:g} %, réglable dans Paramètres)."
 )
 
-signals, scores, replayed_sessions = load_signal_backtest(
-    tuple(get_structures().keys())
-)
+horizon = st.pills(
+    "Horizon",
+    BACKTEST_HORIZONS,
+    default=BACKTEST_HORIZONS[1],
+    format_func=lambda sessions: f"{sessions} séances",
+    key="backtest_horizon",
+    label_visibility="collapsed"
+) or BACKTEST_HORIZONS[1]
 
-if replayed_sessions == 0:
+replayed = load_signal_backtest(tuple(get_structures().keys()))
+
+if replayed.empty:
 
     st.info(
         "Pas assez d'historique pour rejouer les signaux.",
@@ -159,32 +173,34 @@ else:
 
     percent = st.column_config.NumberColumn(format="%.1f")
 
+    signed = st.column_config.NumberColumn(format="%+.2f")
+
     columns = {
         "Hausse ensuite (%)": percent,
         "Baisse ensuite (%)": percent,
-        "Variation moyenne (%)": st.column_config.NumberColumn(
-            format="%+.2f"
-        )
+        "Variation moyenne (%)": signed,
+        "Net de frais (%)": signed
     }
 
     st.dataframe(
-        signals,
+        summarize_signals(replayed, horizon, fee),
         column_config=columns,
         width="stretch",
         hide_index=True
     )
 
     st.dataframe(
-        scores,
+        summarize_scores(replayed, horizon, fee),
         column_config=columns,
         width="stretch",
         hide_index=True
     )
 
     st.caption(
-        f"{replayed_sessions} séances rejouées. Les extrêmes du RSI et de "
-        "Bollinger sont lus titre par titre, d'après ce qui a suivi les "
-        "extrêmes précédents de ce titre : chaque séance est rejouée avec "
-        "ce qui était connu ce jour-là. La composante ML n'est pas rejouée "
-        "ici."
+        f"{len(replayed)} séances rejouées. « Net de frais » : ce qu'il "
+        "serait resté en moyenne à qui aurait acheté à chacune de ces "
+        "séances et revendu à l'horizon choisi. Les extrêmes du RSI et de "
+        "Bollinger sont lus titre par titre, avec ce qui était connu ce "
+        "jour-là ; le MACD est indicatif et n'entre pas dans le score. La "
+        "composante ML n'est pas rejouée ici."
     )

@@ -18,9 +18,9 @@ sys.path.insert(
     str(Path(__file__).resolve().parent.parent)
 )
 
-from config import RESULT_DIR
+from config import DEFAULT_ROUND_TRIP_FEE, RESULT_DIR
 from services.backtest import (
-    HORIZON_SESSIONS,
+    HORIZONS,
     replay_signals,
     summarize_scores,
     summarize_signals
@@ -46,25 +46,43 @@ def main():
 
     replayed = replay_signals(histories)
 
-    signals = summarize_signals(replayed)
-
-    scores = summarize_scores(replayed)
-
     pd.set_option("display.width", 200)
     pd.set_option("display.float_format", "{:.2f}".format)
 
     print(
-        f"{len(replayed)} seances rejouees sur {len(histories)} titre(s), "
-        f"variation mesuree a {HORIZON_SESSIONS} seances.\n"
+        f"{len(replayed)} seances rejouees sur {len(histories)} titre(s). "
+        f"Frais d'un aller-retour : {DEFAULT_ROUND_TRIP_FEE:g} %."
     )
 
-    print(signals.to_string(index=False))
+    tables = []
 
-    print()
+    for horizon in HORIZONS:
 
-    print(scores.to_string(index=False))
+        signals = summarize_signals(
+            replayed,
+            horizon,
+            DEFAULT_ROUND_TRIP_FEE
+        )
 
-    signals.to_csv(BACKTEST_PATH, index=False)
+        print(f"\n=== Variation a {horizon} seances ===\n")
+
+        print(signals.to_string(index=False))
+
+        print()
+
+        print(
+            summarize_scores(
+                replayed,
+                horizon,
+                DEFAULT_ROUND_TRIP_FEE
+            ).to_string(index=False)
+        )
+
+        signals.insert(0, "Horizon (séances)", horizon)
+
+        tables.append(signals)
+
+    pd.concat(tables).to_csv(BACKTEST_PATH, index=False)
 
     print(f"\n-> {BACKTEST_PATH}")
 

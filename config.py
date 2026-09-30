@@ -78,6 +78,11 @@ DEFAULT_WEIGHTS = {
 # indicateurs (cf. services.market_data.adjust_for_dividends).
 DEFAULT_ADJUST_DIVIDENDS = True
 
+# Frais d'un aller-retour (achat puis revente), en pourcentage du montant :
+# commission de la SGI, redevances de marche et taxes. Valeur de depart
+# prudente, a remplacer dans Parametres par le tarif reel de sa SGI.
+DEFAULT_ROUND_TRIP_FEE = 2.0
+
 
 for directory in (DATA_DIR, MODEL_DIR, RESULT_DIR):
     directory.mkdir(exist_ok=True)

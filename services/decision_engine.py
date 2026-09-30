@@ -23,7 +23,6 @@ from services.indicators import RSI_OVERBOUGHT, RSI_OVERSOLD
 MM20_WEIGHT = 8
 MM50_WEIGHT = 10
 RSI_WEIGHT = 12
-MACD_WEIGHT = 10
 BOLLINGER_WEIGHT = 8
 MOMENTUM_WEIGHT = 8
 
@@ -124,6 +123,10 @@ def analyze(
     positive = 0
     negative = 0
     neutral = 0
+
+    # Sens des signaux affiches a titre indicatif (hors score), pour que le
+    # backtest continue de les suivre : {indicateur: +1, 0 ou -1}.
+    indicative = {}
 
     # =====================================================
     # MM20
@@ -227,42 +230,37 @@ def analyze(
 
         # La position par rapport a zero dit la tendance de fond (moyenne
         # courte au-dessus ou en dessous de la longue) ; le croisement avec
-        # la ligne de signal dit si elle accelere ou s'essouffle. Seul le
-        # croisement deplace le score, la ligne zero nuance l'explication.
+        # la ligne de signal dit si elle accelere ou s'essouffle.
         trend = (
             "au-dessus de zéro, tendance de fond haussière"
             if macd > 0
             else "en dessous de zéro, tendance de fond baissière"
         )
 
-        if macd_gap > 0:
+        # Indicatif : affiche et explique, sans deplacer le score. Au
+        # backtest (python -m training.backtest_engine), un MACD au-dessus
+        # de son signal n'a ete suivi de meilleures variations sur aucun
+        # horizon (5, 20, 60 seances) pour deux titres sur trois, et de
+        # moins bonnes sur l'ensemble. Le compter ajoutait du bruit.
+        indicative["MACD"] = int(macd_gap > 0) - int(macd_gap < 0)
 
-            technical_score += MACD_WEIGHT
+        neutral += 1
 
-            positive += 1
+        if macd_gap == 0:
 
+            # Cours fige sur une longue periode : MACD et signal se
+            # confondent.
             reasons.append(
-                f"Le MACD est supérieur à sa ligne de signal ({trend})."
-            )
-
-        elif macd_gap < 0:
-
-            technical_score -= MACD_WEIGHT
-
-            negative += 1
-
-            reasons.append(
-                f"Le MACD est inférieur à sa ligne de signal ({trend})."
+                "Le MACD se confond avec sa ligne de signal."
             )
 
         else:
 
-            # Cours fige sur une longue periode : MACD et signal se
-            # confondent, il n'y a ni croisement haussier ni baissier.
-            neutral += 1
-
             reasons.append(
-                "Le MACD se confond avec sa ligne de signal."
+                "Le MACD est "
+                + ("supérieur" if macd_gap > 0 else "inférieur")
+                + f" à sa ligne de signal ({trend}). Indicatif : ce signal "
+                "n'entre pas dans le score."
             )
 
     # =====================================================
@@ -622,5 +620,7 @@ def analyze(
 
         "reasons": reasons,
 
-        "liquidity_warnings": liquidity_warnings
+        "liquidity_warnings": liquidity_warnings,
+
+        "indicative": indicative
     }

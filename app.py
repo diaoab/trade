@@ -2,6 +2,7 @@ import streamlit as st
 
 from config import (
     DEFAULT_ADJUST_DIVIDENDS,
+    DEFAULT_ROUND_TRIP_FEE,
     DEFAULT_WEIGHTS,
     INDICATOR_DEFAULTS
 )
@@ -55,6 +56,11 @@ st.session_state["weights"] = DEFAULT_WEIGHTS
 st.session_state.setdefault(
     "adjust_dividends",
     bool(preferences.get("adjust_dividends", DEFAULT_ADJUST_DIVIDENDS))
+)
+
+st.session_state.setdefault(
+    "round_trip_fee",
+    float(preferences.get("round_trip_fee", DEFAULT_ROUND_TRIP_FEE))
 )
 
 

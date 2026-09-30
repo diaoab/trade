@@ -51,8 +51,10 @@ def test_technical_score_stays_within_bounds_even_with_all_signals_bullish():
     )
 
     assert 0 <= result["technical_score"] <= 100
-    assert result["positive"] == 5
+    # Le MACD est indicatif : il ne compte ni pour ni contre.
+    assert result["positive"] == 4
     assert result["negative"] == 0
+    assert result["indicative"] == {"MACD": 1}
 
 
 def test_risk_score_is_none_when_volatility_not_selected():

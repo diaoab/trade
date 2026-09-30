@@ -53,6 +53,11 @@ st.session_state.setdefault(
     st.session_state["adjust_dividends"]
 )
 
+st.session_state.setdefault(
+    "round_trip_fee_draft",
+    st.session_state["round_trip_fee"]
+)
+
 
 # =========================================================
 # APPARENCE
@@ -301,6 +306,33 @@ st.divider()
 
 
 # =========================================================
+# FRAIS
+# =========================================================
+
+st.subheader(":material/receipt_long: Frais de courtage")
+
+round_trip_fee_draft = st.number_input(
+    "Frais d'un aller-retour (achat puis revente), en % du montant",
+    min_value=0.0,
+    max_value=20.0,
+    step=0.1,
+    format="%.2f",
+    key="round_trip_fee_draft",
+    help="Commission de ta SGI à l'achat et à la vente, redevances de "
+    "marché et taxes comprises. Déduits des variations affichées dans le "
+    "Journal et du résultat du portefeuille."
+)
+
+st.caption(
+    "Valeur de départ indicative : remplace-la par le tarif réel de ta "
+    "SGI."
+)
+
+
+st.divider()
+
+
+# =========================================================
 # ENREGISTRER
 # =========================================================
 
@@ -308,6 +340,7 @@ has_unsaved_changes = (
     theme_name_draft != st.session_state["theme_name"]
     or selected_parameters_draft != st.session_state["selected_parameters"]
     or adjust_dividends_draft != st.session_state["adjust_dividends"]
+    or round_trip_fee_draft != st.session_state["round_trip_fee"]
     or dividends_draft != saved_dividends
     or holidays_draft != saved_holidays
 )
@@ -328,6 +361,7 @@ if st.button(
     st.session_state["theme_name"] = theme_name_draft
     st.session_state["selected_parameters"] = selected_parameters_draft
     st.session_state["adjust_dividends"] = adjust_dividends_draft
+    st.session_state["round_trip_fee"] = round_trip_fee_draft
 
     if holidays_draft != saved_holidays:
 
@@ -349,7 +383,8 @@ if st.button(
     save_preferences({
         "theme_name": theme_name_draft,
         "selected_parameters": selected_parameters_draft,
-        "adjust_dividends": adjust_dividends_draft
+        "adjust_dividends": adjust_dividends_draft,
+        "round_trip_fee": round_trip_fee_draft
     })
 
     # Rerun immediat : sans lui, la legende "Modifications non

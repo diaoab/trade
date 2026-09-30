@@ -30,7 +30,11 @@ def test_replay_reads_each_signal_from_the_engine():
 
     # Tendance haussiere continue : MM20, MM50 et momentum favorables.
     assert (replayed[["MM20", "MM50", "Momentum"]] == 1).all().all()
-    assert (replayed["Future_Return"] > 0).all()
+    assert (replayed["Future_Return_5"] > 0).all()
+
+    # Horizon long : vide sur les dernieres seances, faute de recul.
+    assert replayed["Future_Return_60"].isna().any()
+    assert replayed["Future_Return_60"].notna().any()
 
     # Les 5 dernieres seances n'ont pas de futur : elles sont ecartees.
     assert replayed["Date"].max() < _trending_history()["Date"].iloc[-5]
@@ -55,3 +59,17 @@ def test_summaries_compare_each_signal_to_the_baseline():
     scores = summarize_scores(replayed)
 
     assert scores["Séances"].sum() == len(replayed)
+
+
+def test_fees_are_deducted_and_long_horizons_use_fewer_sessions():
+
+    replayed = replay_signals({"X": _trending_history()})
+
+    short = summarize_signals(replayed, horizon=5, fee=2.0).iloc[0]
+
+    long = summarize_signals(replayed, horizon=60, fee=2.0).iloc[0]
+
+    assert short["Net de frais (%)"] == short["Variation moyenne (%)"] - 2.0
+
+    assert long["Séances"] < short["Séances"]
+    assert long["Variation moyenne (%)"] > short["Variation moyenne (%)"]

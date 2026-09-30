@@ -22,7 +22,13 @@ from services.decision_engine import (
     analyze
 )
 from services.indicators import calculate_indicators
-from services.targets import FUTURE_HORIZON_DAYS, compute_future_return
+from services.targets import compute_future_return
+
+
+# Horizons de mesure, en seances : une semaine, un mois, un trimestre de
+# bourse. Le plus court est celui de la cible du modele ML ; les plus longs
+# sont ceux ou un signal a le temps de rapporter plus que les frais.
+HORIZONS = (5, 20, 60)
 
 
 # Indicateurs qui deplacent le score technique. "Volatilité" n'en fait pas
@@ -44,8 +50,7 @@ REQUIRED_COLUMNS = [
     "MACD_Signal",
     "Bollinger_Upper",
     "Bollinger_Lower",
-    "Return_5D",
-    "Future_Return"
+    "Return_5D"
 ]
 
 NEUTRAL_ML_RESULT = {"probability_up": 0.5}
@@ -59,14 +64,14 @@ SIGNAL_LABELS = {
 }
 
 
-def _technical_score(row, indicators):
+def _analyze(row, indicators):
 
     return analyze(
         row,
         NEUTRAL_ML_RESULT,
         indicators,
         TECHNICAL_ONLY
-    )["technical_score"]
+    )
 
 
 def replay_signals(histories):
@@ -75,8 +80,9 @@ def replay_signals(histories):
     histories : {symbole: DataFrame d'historique normalise}. Retourne une
     ligne par seance exploitable, avec le signal de chaque indicateur
     (+1 favorable, 0 neutre, -1 defavorable), le score technique tous
-    indicateurs confondus et la variation du cours sur les
-    FUTURE_HORIZON_DAYS seances suivantes.
+    indicateurs confondus et la variation du cours a chaque horizon de
+    HORIZONS (colonnes Future_Return_5, _20, _60 ; vide quand l'historique
+    ne va pas assez loin).
 
     Le signal d'un indicateur est lu en appelant le moteur avec ce seul
     indicateur : ce backtest ne peut donc pas diverger des regles reellement
@@ -89,61 +95,94 @@ def replay_signals(histories):
 
         prepared = calculate_indicators(history)
 
-        prepared["Future_Return"] = compute_future_return(prepared["Close"])
+        for horizon in HORIZONS:
 
-        prepared = prepared.dropna(subset=REQUIRED_COLUMNS)
+            prepared[f"Future_Return_{horizon}"] = compute_future_return(
+                prepared["Close"],
+                horizon
+            )
+
+        prepared = prepared.dropna(
+            subset=REQUIRED_COLUMNS + [f"Future_Return_{HORIZONS[0]}"]
+        )
 
         for _, session in prepared.iterrows():
 
             row = {
                 "Symbol": symbol,
                 "Date": session.get("Date"),
-                "Future_Return": session["Future_Return"],
-                "Technical_Score": _technical_score(
+                "Technical_Score": _analyze(
                     session,
                     SIGNAL_INDICATORS
-                )
+                )["technical_score"]
             }
+
+            for horizon in HORIZONS:
+
+                row[f"Future_Return_{horizon}"] = session[
+                    f"Future_Return_{horizon}"
+                ]
 
             for indicator in SIGNAL_INDICATORS:
 
+                result = _analyze(session, [indicator])
+
                 deviation = (
-                    _technical_score(session, [indicator])
+                    result["technical_score"]
                     - TECHNICAL_SCORE_NEUTRAL
                 )
 
-                row[indicator] = (deviation > 0) - (deviation < 0)
+                # Un signal indicatif ne deplace pas le score : son sens
+                # est lu dans le champ que le moteur lui reserve.
+                row[indicator] = result["indicative"].get(
+                    indicator,
+                    (deviation > 0) - (deviation < 0)
+                )
 
             rows.append(row)
 
     return pd.DataFrame(
         rows,
-        columns=["Symbol", "Date", "Future_Return", "Technical_Score"]
+        columns=["Symbol", "Date", "Technical_Score"]
+        + [f"Future_Return_{horizon}" for horizon in HORIZONS]
         + SIGNAL_INDICATORS
     )
 
 
-def _stats(future_returns):
+def _stats(future_returns, fee):
+    """fee : frais d'un aller-retour (achat puis revente), en pourcentage.
+
+    "Net de frais" est ce qu'il serait reste, en moyenne, a qui aurait
+    achete a chacune de ces seances et revendu a l'horizon.
+    """
+
+    future_returns = future_returns.dropna()
+
+    mean = future_returns.mean() * 100
 
     return {
         "Séances": len(future_returns),
         "Hausse ensuite (%)": (future_returns > 0).mean() * 100,
         "Baisse ensuite (%)": (future_returns < 0).mean() * 100,
-        "Variation moyenne (%)": future_returns.mean() * 100
+        "Variation moyenne (%)": mean,
+        "Net de frais (%)": mean - fee
     }
 
 
-def summarize_signals(replayed):
-    """Ce qui a suivi chaque signal, indicateur par indicateur.
+def summarize_signals(replayed, horizon=HORIZONS[0], fee=0.0):
+    """Ce qui a suivi chaque signal, indicateur par indicateur, `horizon`
+    seances plus tard.
 
     La premiere ligne ("Toutes les séances") est la reference : un signal
     n'apporte quelque chose que s'il s'en ecarte nettement.
     """
 
+    future_return = f"Future_Return_{horizon}"
+
     rows = [{
         "Indicateur": "Toutes les séances",
         "Signal": "—",
-        **_stats(replayed["Future_Return"])
+        **_stats(replayed[future_return], fee)
     }]
 
     for indicator in SIGNAL_INDICATORS:
@@ -152,8 +191,8 @@ def summarize_signals(replayed):
 
             matching = replayed.loc[
                 replayed[indicator] == value,
-                "Future_Return"
-            ]
+                future_return
+            ].dropna()
 
             if matching.empty:
                 continue
@@ -161,15 +200,17 @@ def summarize_signals(replayed):
             rows.append({
                 "Indicateur": indicator,
                 "Signal": label,
-                **_stats(matching)
+                **_stats(matching, fee)
             })
 
     return pd.DataFrame(rows)
 
 
-def summarize_scores(replayed):
+def summarize_scores(replayed, horizon=HORIZONS[0], fee=0.0):
     """Ce qui a suivi le score technique, selon les seuils de decision du
     moteur appliques au seul score technique."""
+
+    future_return = f"Future_Return_{horizon}"
 
     zones = [
         (
@@ -189,10 +230,7 @@ def summarize_scores(replayed):
     ]
 
     return pd.DataFrame([
-        {"Zone": label, **_stats(replayed.loc[mask, "Future_Return"])}
+        {"Zone": label, **_stats(replayed.loc[mask, future_return], fee)}
         for label, mask in zones
         if mask.any()
     ])
-
-
-HORIZON_SESSIONS = FUTURE_HORIZON_DAYS
