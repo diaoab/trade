@@ -45,6 +45,20 @@ RISK_SCORE_HIGH_VOLATILITY = 35
 
 
 # =========================================================
+# LIQUIDITE
+# =========================================================
+
+# Au-dela de la moitie des 20 dernieres seances sans variation, ou quand la
+# seance analysee a echange moins de 5 % du volume moyen, les indicateurs
+# sont calcules sur un cours qui ne reflete presque aucun echange reel. Le
+# seuil de volume est bas parce que la moyenne est tiree par quelques tres
+# grosses seances : la seance mediane n'en represente que 30 a 40 %, et
+# 5 % isole environ une seance sur six.
+FLAT_SHARE_THRESHOLD = 0.5
+LOW_VOLUME_RATIO = 0.05
+
+
+# =========================================================
 # DECISION FINALE
 # =========================================================
 
@@ -52,7 +66,10 @@ DECISION_BUY_THRESHOLD = 70
 DECISION_HOLD_THRESHOLD = 45
 # En dessous de DECISION_HOLD_THRESHOLD : VENDRE.
 
-CONFIDENCE_MIN = 50
+# Confiance = ecart du score a la neutralite (50), ramene sur 100. Pas de
+# plancher : un score de 52 doit afficher une confiance quasi nulle, et non
+# un "50 %" qui laisserait croire a une chance sur deux d'avoir raison.
+CONFIDENCE_MIN = 0
 CONFIDENCE_MAX = 95
 
 
@@ -363,27 +380,74 @@ def analyze(
             )
 
     # =====================================================
+    # LIQUIDITE
+    # =====================================================
+
+    # Avertissement seulement : il ne deplace pas le score, faute d'avoir
+    # mesure de combien un signal perd en fiabilite sur un titre illiquide.
+    liquidity_warnings = []
+
+    flat_share = row.get("Flat_Share_20D")
+
+    if flat_share is not None and flat_share >= FLAT_SHARE_THRESHOLD:
+
+        liquidity_warnings.append(
+            f"Le cours n'a pas varié sur {flat_share * 100:.0f} % des 20 "
+            "dernières séances : titre peu échangé."
+        )
+
+    volume_ratio = row.get("Volume_Ratio")
+
+    if volume_ratio is not None and volume_ratio < LOW_VOLUME_RATIO:
+
+        liquidity_warnings.append(
+            "Le volume de la séance est très faible "
+            f"({volume_ratio * 100:.0f} % de sa moyenne sur 20 séances)."
+        )
+
+    # =====================================================
     # SCORE ML
     # =====================================================
 
-    probability_up = ml_result["probability_up"] * 100
+    ml_weight = weights["Machine Learning"]
 
-    # "ml_score" (percentile de la probabilite dans son historique
-    # hors-echantillon) est prefere quand il est fourni par predict_row :
-    # une probabilite brute compressee autour du taux de base ne ferait
-    # jamais pencher la decision vers l'achat. A defaut (modele plus ancien,
-    # sans distribution de reference), on retombe sur la probabilite brute.
-    ml_score = ml_result.get("ml_score", probability_up)
+    if ml_result is None:
 
-    reasons.append(
-        f"Le modèle ML estime une probabilité "
-        f"de hausse de {probability_up:.1f}%"
-        + (
-            f" (position dans son historique : {ml_score:.1f}/100)."
-            if "ml_score" in ml_result
-            else "."
+        # Modele absent ou illisible : l'analyse reste possible sur la seule
+        # base technique, plutot que de ne rien rendre du tout.
+        ml_score = None
+
+        reasons.append(
+            "Le modèle ML n'est pas disponible : la décision repose sur "
+            "l'analyse technique."
         )
-    )
+
+    else:
+
+        probability_up = ml_result["probability_up"] * 100
+
+        # "ml_score" (percentile de la probabilite dans son historique
+        # hors-echantillon) est prefere quand il est fourni par predict_row :
+        # une probabilite brute compressee autour du taux de base ne ferait
+        # jamais pencher la decision vers l'achat. A defaut (modele plus
+        # ancien, sans distribution de reference), on retombe sur la
+        # probabilite brute.
+        ml_score = ml_result.get("ml_score", probability_up)
+
+        reasons.append(
+            f"Le modèle ML estime une probabilité "
+            f"de hausse de {probability_up:.1f}%"
+            + (
+                f" (position dans son historique : {ml_score:.1f}/100)"
+                if "ml_score" in ml_result
+                else ""
+            )
+            + (
+                ", à titre indicatif : il n'entre pas dans le score."
+                if ml_weight == 0
+                else "."
+            )
+        )
 
     # =====================================================
     # NORMALISATION
@@ -405,28 +469,24 @@ def analyze(
         weights["Technique"]
     )
 
-    ml_weight = (
-        weights["Machine Learning"]
-    )
-
     risk_weight = (
         weights["Risque"]
     )
 
-    # Seules les composantes reellement mesurees entrent dans la moyenne, et
-    # le total des poids est recalcule en consequence.
+    # Seules les composantes qui disent un SENS (hausse ou baisse) entrent
+    # dans la moyenne : l'analyse technique et, s'il est disponible, le
+    # modele. Le total des poids est recalcule en consequence.
     components = [
-        (technical_score, technical_weight),
-        (ml_score, ml_weight)
+        (technical_score, technical_weight)
     ]
 
-    if risk_score is not None:
+    if ml_score is not None:
 
         components.append(
-            (risk_score, risk_weight)
+            (ml_score, ml_weight)
         )
 
-    total_weight = sum(
+    directional_weight = sum(
         weight
         for _, weight in components
     )
@@ -435,15 +495,15 @@ def analyze(
     # SCORE FINAL
     # =====================================================
 
-    if total_weight == 0:
+    if directional_weight == 0:
 
-        # Tous les curseurs a zero : aucune composante ne pese, on ne peut
-        # rien conclure plutot que de renvoyer un score arbitraire.
+        # Ni la technique ni le modele ne pesent : rien ne peut dire dans
+        # quel sens pencher, quel que soit le niveau de risque.
         final_score = 50.0
 
         reasons.append(
-            "Tous les poids sont a zero : aucune composante ne peut "
-            "departager la decision."
+            "Ni l'analyse technique ni le modèle ne pèsent dans le score : "
+            "aucune composante ne peut départager la décision."
         )
 
     else:
@@ -451,7 +511,21 @@ def analyze(
         final_score = sum(
             score * weight
             for score, weight in components
-        ) / total_weight
+        ) / directional_weight
+
+        # Le risque ne dit pas un sens : une volatilite faible n'est pas une
+        # raison d'acheter. Le moyenner avec les autres scores (ce que
+        # faisait ce moteur) remontait vers 50 et au-dela une analyse
+        # nettement baissiere des que le titre etait calme. Il reduit donc
+        # la conviction : plus le risque est eleve, plus le score est ramene
+        # vers la neutralite, a hauteur de la part du poids "Risque".
+        if risk_score is not None:
+
+            risk_share = risk_weight / (directional_weight + risk_weight)
+
+            conviction = 1 - risk_share * (1 - risk_score / 100)
+
+            final_score = 50 + (final_score - 50) * conviction
 
     final_score = round(
         final_score,
@@ -508,9 +582,10 @@ def analyze(
             2
         ),
 
-        "ml_score": round(
-            ml_score,
-            2
+        "ml_score": (
+            round(ml_score, 2)
+            if ml_score is not None
+            else None
         ),
 
         "risk_score": (
@@ -525,5 +600,7 @@ def analyze(
 
         "neutral": neutral,
 
-        "reasons": reasons
+        "reasons": reasons,
+
+        "liquidity_warnings": liquidity_warnings
     }

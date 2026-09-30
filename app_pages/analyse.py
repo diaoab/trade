@@ -402,20 +402,29 @@ row_heights = {
 # debut de la periode affichee : seul l'affichage est restreint, pour que la
 # courbe du cours et celles des moyennes mobiles demarrent ensemble, sans
 # trou du a une fenetre de calcul incomplete.
+#
+# Le graphique s'arrete a la seance analysee : rejouer une seance passee
+# doit montrer ce qu'on voyait ce jour-la, pas la suite du cours.
+history_df = (
+    df[df["Date"] <= latest["Date"]]
+    if "Date" in df.columns
+    else df
+)
+
 if "Date" in df.columns and chart_range in CHART_RANGE_DAYS:
 
     window_start = latest["Date"] - pd.Timedelta(
         days=CHART_RANGE_DAYS[chart_range]
     )
 
-    display_df = df[df["Date"] >= window_start]
+    display_df = history_df[history_df["Date"] >= window_start]
 
     if display_df.empty:
-        display_df = df
+        display_df = history_df
 
 else:
 
-    display_df = df
+    display_df = history_df
 
 
 x_axis = (
@@ -734,11 +743,18 @@ if analyze_button:
 
         ml_result = predict_row(latest)
 
-    except ModelUnavailable as error:
+    except ModelUnavailable:
 
-        st.error(f"Modèle indisponible : {error}")
+        # Le moteur sait conclure sans modele (cf. decision_engine) :
+        # l'absence du modele est signalee plus bas, avec le resultat.
+        ml_result = None
 
-        st.stop()
+    # Un modele qui ne bat pas la reference naive n'a pas montre qu'il
+    # prevoyait quoi que ce soit : le laisser peser dans le score reviendrait
+    # a y melanger du bruit. Il reste affiche, a titre indicatif.
+    if model_metadata is not None and not model_metadata["beats_baseline"]:
+
+        weights = {**weights, "Machine Learning": 0}
 
     result = analyze(
         latest,
@@ -844,8 +860,39 @@ if (
         )
         st.metric(
             ":material/psychology: Probabilité ML (forte perf. à 5j)",
-            f"{ml_result['probability_up'] * 100:.1f}%",
+            f"{ml_result['probability_up'] * 100:.1f}%"
+            if ml_result is not None
+            else "indisponible",
             border=True
+        )
+
+    # .get : un resultat conserve en session avant l'ajout de ce champ.
+    if result.get("liquidity_warnings"):
+
+        st.warning(
+            "**Liquidité faible.** "
+            + " ".join(result["liquidity_warnings"])
+            + " Les signaux techniques sont moins fiables sur un titre qui "
+            "s'échange peu.",
+            icon=":material/water_drop:"
+        )
+
+    if ml_result is None:
+
+        st.warning(
+            "Modèle ML indisponible : la décision repose sur l'analyse "
+            "technique seule. Lance `python -m training.train` pour "
+            "l'entraîner.",
+            icon=":material/warning:"
+        )
+
+    elif last_analysis["weights"]["Machine Learning"] == 0:
+
+        st.warning(
+            "Le modèle ML ne bat pas la référence naïve sur son jeu de "
+            "test : sa probabilité est affichée à titre indicatif, mais "
+            "elle est exclue du score global.",
+            icon=":material/warning:"
         )
 
 
@@ -863,7 +910,9 @@ if (
         )
         st.metric(
             ":material/psychology: Machine Learning",
-            f"{result['ml_score']}/100",
+            f"{result['ml_score']}/100"
+            if result["ml_score"] is not None
+            else "indisponible",
             border=True
         )
         st.metric(
@@ -875,9 +924,14 @@ if (
         )
 
 
+    def _signals(count, singular):
+        return f"{count} {singular}{'s' if count > 1 else ''}"
+
     st.caption(
-        f"Signaux techniques : {result['positive']} favorables · "
-        f"{result['negative']} défavorables · {result['neutral']} neutres"
+        "Signaux techniques : "
+        f"{_signals(result['positive'], 'favorable')} · "
+        f"{_signals(result['negative'], 'défavorable')} · "
+        f"{_signals(result['neutral'], 'neutre')}"
     )
 
 

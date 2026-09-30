@@ -93,7 +93,11 @@ def build_narration(
 
         f"Dans le détail : analyse technique, "
         f"{_number(result['technical_score'])} sur 100. "
-        f"Modèle d'apprentissage, {_number(result['ml_score'])} sur 100. "
+        + (
+            f"Modèle d'apprentissage, {_number(result['ml_score'])} sur 100. "
+            if result["ml_score"] is not None
+            else ""
+        )
         + (
             f"Risque, {_number(result['risk_score'])} sur 100."
             if result["risk_score"] is not None
@@ -115,6 +119,18 @@ def build_narration(
         _for_speech(reason)
         for reason in result["reasons"]
     )
+
+    if result.get("liquidity_warnings"):
+
+        sentences.append(
+            "Attention, liquidité faible : "
+            + " ".join(
+                _for_speech(warning)
+                for warning in result["liquidity_warnings"]
+            )
+            + " Les signaux techniques sont moins fiables sur un titre qui "
+            "s'échange peu."
+        )
 
     if dividend is not None and dividend["days_left"] >= 0:
 

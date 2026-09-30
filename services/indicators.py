@@ -22,6 +22,8 @@ MACD_SIGNAL = 9
 
 VOLATILITY_WINDOW = 10
 
+LIQUIDITY_WINDOW = 20
+
 
 def calculate_indicators(df):
 
@@ -192,6 +194,21 @@ def calculate_indicators(df):
         df["Return_1D"]
         .rolling(VOLATILITY_WINDOW)
         .std()
+    )
+
+    # ==============================
+    # LIQUIDITE
+    # ==============================
+
+    # Part des seances sans aucune variation sur la fenetre : sur la BRVM,
+    # un cours qui ne bouge pas signale le plus souvent un titre qui ne
+    # s'echange pas, pas un marche a l'equilibre.
+    df["Flat_Share_20D"] = (
+        (df["Return_1D"] == 0)
+        .astype(float)
+        .where(df["Return_1D"].notna())
+        .rolling(LIQUIDITY_WINDOW)
+        .mean()
     )
 
     # ==============================

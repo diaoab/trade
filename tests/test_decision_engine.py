@@ -129,7 +129,7 @@ def test_all_weights_zero_returns_neutral_score():
     assert result["decision"] == "CONSERVER"
 
 
-def test_confidence_is_clamped_between_50_and_95():
+def test_confidence_grows_with_distance_from_neutral_and_is_capped():
 
     extreme_confidence = analyze(
         _base_row(),
@@ -148,7 +148,35 @@ def test_confidence_is_clamped_between_50_and_95():
         {"Technique": 0, "Machine Learning": 100, "Risque": 0}
     )["confidence"]
 
-    assert neutral_confidence == 50.0
+    # Score pile a 50 : aucune conviction, et surtout pas un plancher a 50 %.
+    assert neutral_confidence == 0.0
+
+
+def test_analysis_runs_without_a_model():
+
+    result = analyze(
+        _base_row(Close=120.0),
+        None,
+        ["MM20", "MM50"],
+        {"Technique": 40, "Machine Learning": 40, "Risque": 20}
+    )
+
+    assert result["ml_score"] is None
+    # Seule composante mesuree : le score global est le score technique.
+    assert result["score"] == result["technical_score"] == 68
+
+
+def test_zero_weight_model_is_reported_as_indicative_only():
+
+    result = analyze(
+        _base_row(),
+        {"probability_up": 0.9},
+        ["RSI"],
+        {"Technique": 100, "Machine Learning": 0, "Risque": 0}
+    )
+
+    assert result["score"] == 50
+    assert any("à titre indicatif" in reason for reason in result["reasons"])
 
 
 TECHNICAL_ONLY = {"Technique": 100, "Machine Learning": 0, "Risque": 0}
@@ -198,3 +226,59 @@ def test_flat_prices_give_no_bollinger_macd_or_momentum_signal():
     assert result["negative"] == 0
     assert result["neutral"] == 3
     assert result["technical_score"] == 50
+
+
+def test_illiquid_sessions_are_flagged_without_moving_the_score():
+
+    liquid = analyze(
+        _base_row(Flat_Share_20D=0.1, Volume_Ratio=1.0),
+        NEUTRAL_ML_RESULT,
+        ["RSI"],
+        TECHNICAL_ONLY
+    )
+
+    illiquid = analyze(
+        _base_row(Flat_Share_20D=0.7, Volume_Ratio=0.01),
+        NEUTRAL_ML_RESULT,
+        ["RSI"],
+        TECHNICAL_ONLY
+    )
+
+    assert liquid["liquidity_warnings"] == []
+    assert len(illiquid["liquidity_warnings"]) == 2
+    assert illiquid["score"] == liquid["score"]
+
+    # Historique sans colonne Volume : pas d'avertissement invente.
+    assert analyze(
+        _base_row(), NEUTRAL_ML_RESULT, ["RSI"], TECHNICAL_ONLY
+    )["liquidity_warnings"] == []
+
+
+def test_risk_tempers_conviction_without_giving_a_direction():
+    """Meme analyse technique baissiere, deux niveaux de volatilite : le
+    titre calme ne doit pas ressortir plus "acheteur", seulement moins
+    tempere."""
+
+    bearish = dict(Close=80.0, MM20=100.0, MM50=100.0)
+
+    weights = {"Technique": 40, "Machine Learning": 0, "Risque": 20}
+
+    calm = analyze(
+        _base_row(Volatility_10D=0.001, **bearish),
+        None,
+        ["MM20", "MM50", "Volatilité"],
+        weights
+    )
+
+    nervous = analyze(
+        _base_row(Volatility_10D=0.5, **bearish),
+        None,
+        ["MM20", "MM50", "Volatilité"],
+        weights
+    )
+
+    assert calm["technical_score"] == nervous["technical_score"] == 32
+
+    # Les deux restent sous 50 ; le titre agite est ramene plus pres de 50.
+    assert calm["score"] < nervous["score"] < 50
+    assert calm["decision"] == "VENDRE"

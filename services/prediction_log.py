@@ -98,7 +98,11 @@ def log_prediction(
 
         "ml_score": result["ml_score"],
 
-        "probability_up": ml_result["probability_up"],
+        "probability_up": (
+            ml_result["probability_up"]
+            if ml_result is not None
+            else None
+        ),
 
         "risk_score": result["risk_score"],
 
