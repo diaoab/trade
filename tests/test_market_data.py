@@ -3,6 +3,7 @@
 import pandas as pd
 import pytest
 
+from services import market_data
 from services.market_data import (
     _count_inversions,
     _swap_day_month,
@@ -208,3 +209,58 @@ def test_cutoff_date_is_the_previous_business_day():
     # Detachement un lundi : la date butoir est le vendredi precedent.
     assert cutoff_date("2025-06-16") == pd.Timestamp("2025-06-13")
     assert cutoff_date("2025-06-12") == pd.Timestamp("2025-06-11")
+
+
+# =========================================================
+# IMPORT
+# =========================================================
+
+def _export(tmp_path, name, dates, closes):
+
+    path = tmp_path / name
+
+    pd.DataFrame({
+        "Date": pd.to_datetime(dates),
+        "Close": closes
+    }).to_excel(path, index=False)
+
+    return path
+
+
+def test_reimporting_a_structure_completes_its_history(tmp_path, monkeypatch):
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    monkeypatch.setattr(market_data, "DATA_DIR", data_dir)
+    monkeypatch.setattr(market_data, "REGISTRY_PATH", data_dir / "structures.json")
+
+    first = _export(
+        tmp_path, "a.xlsx",
+        ["2025-06-09", "2025-06-10", "2025-06-11"],
+        [100.0, 101.0, 102.0]
+    )
+
+    symbol, report = market_data.save_uploaded_structure(first, "Titre X")
+
+    assert (report["updated"], report["rows_added"]) == (False, 3)
+
+    market_data.set_dividends(symbol, [{"ex_date": "2025-06-10", "amount": 1}])
+
+    # Export plus recent : une seance deja connue (corrigee) et une nouvelle.
+    second = _export(
+        tmp_path, "b.xlsx",
+        ["2025-06-11", "2025-06-12"],
+        [105.0, 106.0]
+    )
+
+    symbol, report = market_data.save_uploaded_structure(second, "Titre X")
+
+    assert (report["updated"], report["rows_added"]) == (True, 1)
+
+    history = market_data.load_structure(symbol, adjust_dividends=False)
+
+    assert history["Close"].tolist() == [100.0, 101.0, 105.0, 106.0]
+
+    # Les dividendes saisis survivent a la mise a jour.
+    assert len(market_data.get_structures()[symbol]["dividends"]) == 1

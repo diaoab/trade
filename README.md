@@ -133,8 +133,15 @@ results/                 Sorties d'entraînement : comparaison de modèles,
   entraînement pour voir s'il bat la référence naïve sur le test, pas
   seulement l'accuracy brute.
 - **Moteur de décision heuristique** : les poids de `decision_engine.py`
-  (croisement de moyennes mobiles, zones RSI...) suivent des conventions
-  usuelles d'analyse technique mais n'ont pas été validés par un backtest.
+  restent des conventions. Le backtest (`python -m training.backtest_engine`,
+  repris dans la page Journal) montre que seuls les extrêmes du RSI et de
+  Bollinger ont été suivis de mouvements nets, et dans un sens qui dépend du
+  titre : ils sont donc lus titre par titre, d'après l'historique de chacun
+  (`calibrate_extremes`). MM20, MACD et momentum n'ont presque pas départagé
+  hausses et baisses sur les titres actuels ; le score global discrimine
+  donc peu.
+- **Modèle ML exclu du score tant qu'il ne bat pas la référence naïve** : il
+  reste affiché à titre indicatif.
 - **Dividendes saisis à la main** : les dates ex-dividende et montants se
   renseignent par structure dans Paramètres (stockés dans
   `data/structures.json`). L'historique antérieur à un détachement est alors

@@ -4,8 +4,11 @@ Les bonus/malus ci-dessous sont des heuristiques d'analyse technique : ils
 fixent un ordre de grandeur raisonnable entre signaux, sans pretention de
 precision predictive. Le sens de lecture de chaque signal, lui, est confronte
 a l'historique par python -m training.backtest_engine ; c'est ce backtest qui
-a conduit a lire RSI et Bollinger en suivi de tendance (voir plus bas).
+a conduit a lire les extremes du RSI et de Bollinger titre par titre (voir
+_read_extreme).
 """
+
+from services.indicators import RSI_OVERBOUGHT, RSI_OVERSOLD
 
 
 # =========================================================
@@ -28,8 +31,8 @@ TECHNICAL_SCORE_NEUTRAL = 50
 TECHNICAL_SCORE_MIN = 0
 TECHNICAL_SCORE_MAX = 100
 
-RSI_OVERSOLD = 30
-RSI_OVERBOUGHT = 70
+# Seuils RSI_OVERSOLD / RSI_OVERBOUGHT : definis avec l'indicateur, qui
+# s'en sert pour calibrer la lecture des extremes.
 
 
 # =========================================================
@@ -71,6 +74,40 @@ DECISION_HOLD_THRESHOLD = 45
 # un "50 %" qui laisserait croire a une chance sur deux d'avoir raison.
 CONFIDENCE_MIN = 0
 CONFIDENCE_MAX = 95
+
+
+def _read_extreme(description, extreme, reading):
+    """Traduit un extreme en signal, selon la lecture calibree sur le titre.
+
+    extreme : +1 exces haussier, -1 exces baissier. reading : +1 si, sur ce
+    titre, les exces se sont jusqu'ici prolonges (suivi de tendance), -1
+    s'ils se sont corriges (retour a la moyenne), 0 si son historique ne
+    tranche pas. Retourne (sens du signal, explication).
+
+    Ni la convention classique (survente = achat) ni son inverse ne vaut
+    pour tous les titres du catalogue (cf. python -m
+    training.backtest_engine) : sans lecture etablie, l'extreme est signale
+    mais ne deplace pas le score.
+    """
+
+    if reading > 0:
+
+        return extreme, (
+            f"{description} : sur ce titre, un tel élan s'est le plus "
+            "souvent prolongé."
+        )
+
+    if reading < 0:
+
+        return -extreme, (
+            f"{description} : sur ce titre, un tel excès s'est le plus "
+            "souvent corrigé."
+        )
+
+    return 0, (
+        f"{description}, mais l'historique de ce titre ne permet pas de "
+        "dire si cela annonce une poursuite ou un retournement."
+    )
 
 
 def analyze(
@@ -146,40 +183,29 @@ def analyze(
     # RSI
     # =====================================================
 
-    # Lecture en suivi de tendance, et non a contre-courant : la convention
-    # classique (survente = occasion d'achat, surachat = signal de vente)
-    # suppose un retour a la moyenne que le backtest ne retrouve pas sur les
-    # titres du catalogue (cf. python -m training.backtest_engine). Sur
-    # 3 854 seances de BIBI CI et PALM CI, un RSI > 70 a ete suivi de +1,8 %
-    # en moyenne a 5 seances (hausse dans 53 % des cas, contre 43 % toutes
-    # seances confondues) et un RSI < 30 de -0,9 % (hausse dans 34 % des
-    # cas). Sur un marche peu liquide ou la variation quotidienne est
-    # plafonnee, un mouvement fort s'etale sur plusieurs seances.
+    # La lecture d'un extreme (surachat, survente) depend du titre : voir
+    # _read_extreme et services.indicators.calibrate_extremes.
     if "RSI" in selected_parameters:
 
         rsi = row["RSI"]
 
-        if rsi > RSI_OVERBOUGHT:
+        if rsi > RSI_OVERBOUGHT or rsi < RSI_OVERSOLD:
 
-            technical_score += RSI_WEIGHT
-
-            positive += 1
-
-            reasons.append(
-                "Le RSI est en zone de surachat : élan haussier fort, qui "
-                "s'est le plus souvent prolongé sur ce marché."
+            direction, reason = _read_extreme(
+                "Le RSI est en zone de surachat"
+                if rsi > RSI_OVERBOUGHT
+                else "Le RSI est en zone de survente",
+                1 if rsi > RSI_OVERBOUGHT else -1,
+                row.get("RSI_Reading", 0)
             )
 
-        elif rsi < RSI_OVERSOLD:
+            technical_score += direction * RSI_WEIGHT
 
-            technical_score -= RSI_WEIGHT
+            positive += direction > 0
+            negative += direction < 0
+            neutral += direction == 0
 
-            negative += 1
-
-            reasons.append(
-                "Le RSI est en zone de survente : élan baissier fort, qui "
-                "s'est le plus souvent prolongé sur ce marché."
-            )
+            reasons.append(reason)
 
         else:
 
@@ -271,30 +297,24 @@ def analyze(
             # 0 % sur la bande basse, 100 % sur la bande haute.
             position = (close - lower) / width * 100
 
-            # Meme lecture en suivi de tendance que le RSI, pour la meme
-            # raison : une sortie par le haut a ete suivie de +2,9 % en
-            # moyenne a 5 seances, une sortie par le bas de -0,2 %.
-            if position >= 100:
+            if position >= 100 or position <= 0:
 
-                technical_score += BOLLINGER_WEIGHT
-
-                positive += 1
-
-                reasons.append(
-                    "Le cours est sorti par le haut des bandes de Bollinger "
-                    "(élan haussier)."
+                direction, reason = _read_extreme(
+                    "Le cours est sorti par le haut des bandes de Bollinger"
+                    if position >= 100
+                    else "Le cours est sorti par le bas des bandes de "
+                    "Bollinger",
+                    1 if position >= 100 else -1,
+                    row.get("Bollinger_Reading", 0)
                 )
 
-            elif position <= 0:
+                technical_score += direction * BOLLINGER_WEIGHT
 
-                technical_score -= BOLLINGER_WEIGHT
+                positive += direction > 0
+                negative += direction < 0
+                neutral += direction == 0
 
-                negative += 1
-
-                reasons.append(
-                    "Le cours est sorti par le bas des bandes de Bollinger "
-                    "(élan baissier)."
-                )
+                reasons.append(reason)
 
             else:
 

@@ -4,5 +4,8 @@
   },
   "PALM_CI": {
     "name": "PALM CI"
+  },
+  "TOTAL_CI": {
+    "name": "TOTAL CI"
   }
 }

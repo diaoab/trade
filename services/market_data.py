@@ -693,6 +693,8 @@ def save_uploaded_structure(uploaded_file, name):
 
     Le fichier n'est ecrit dans data/ que si prepare_dataframe() a reussi a
     l'interpreter, pour qu'un export mal forme ne pollue pas le catalogue.
+    Si une structure porte deja ce nom, ses seances sont completees par
+    celles du nouveau fichier (rapport : "updated", "rows_added").
     """
 
     df, report = prepare_dataframe(
@@ -712,6 +714,36 @@ def save_uploaded_structure(uploaded_file, name):
         )
 
     path = DATA_DIR / f"{filename}.xlsx"
+
+    report["rows_added"] = len(df)
+
+    report["updated"] = path.exists()
+
+    if report["updated"] and "Date" in df.columns:
+
+        # Meme nom qu'une structure existante : on complete son historique
+        # au lieu de l'ecraser. Un export recent ne couvre souvent que les
+        # dernieres seances ; le reimporter ne doit pas faire perdre les
+        # annees deja en base. Sur une seance presente des deux cotes, le
+        # nouveau fichier l'emporte (cours corrige par le fournisseur).
+        existing, _ = prepare_dataframe(
+            pd.read_excel(path)
+        )
+
+        if "Date" in existing.columns:
+
+            report["rows_added"] = int(
+                (~df["Date"].isin(existing["Date"])).sum()
+            )
+
+            df = (
+                pd.concat([existing, df], ignore_index=True)
+                .drop_duplicates(subset=["Date"], keep="last")
+                .sort_values("Date")
+                .reset_index(drop=True)
+            )
+
+            report["rows_out"] = len(df)
 
     df.to_excel(path, index=False)
 

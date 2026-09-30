@@ -37,6 +37,7 @@ def test_technical_score_stays_within_bounds_even_with_all_signals_bullish():
         MM20=100.0,
         MM50=100.0,
         RSI=90.0,
+        RSI_Reading=1,
         MACD=5.0,
         MACD_Signal=1.0,
         Return_5D=0.1
@@ -198,17 +199,30 @@ def test_bollinger_is_neutral_inside_the_bands_and_says_so():
 
 def test_bollinger_signals_only_outside_the_bands():
 
-    below = analyze(
-        _base_row(Close=85.0), NEUTRAL_ML_RESULT, ["Bollinger"], TECHNICAL_ONLY
-    )
+    def breakout(close, reading):
 
-    above = analyze(
-        _base_row(Close=115.0), NEUTRAL_ML_RESULT, ["Bollinger"], TECHNICAL_ONLY
-    )
+        return analyze(
+            _base_row(Close=close, Bollinger_Reading=reading),
+            NEUTRAL_ML_RESULT,
+            ["Bollinger"],
+            TECHNICAL_ONLY
+        )
 
-    # Suivi de tendance : la sortie par le haut est le signal favorable.
-    assert above["positive"] == 1
-    assert below["negative"] == 1
+    # Titre dont les exces se prolongent : la sortie par le haut est
+    # favorable, la sortie par le bas defavorable.
+    assert breakout(115.0, 1)["positive"] == 1
+    assert breakout(85.0, 1)["negative"] == 1
+
+    # Titre dont les exces se corrigent : lecture inverse.
+    assert breakout(115.0, -1)["negative"] == 1
+    assert breakout(85.0, -1)["positive"] == 1
+
+    # Historique qui ne tranche pas : l'extreme est signale, sans peser.
+    undecided = breakout(115.0, 0)
+
+    assert undecided["neutral"] == 1
+    assert undecided["technical_score"] == 50
+    assert any("ne permet pas" in reason for reason in undecided["reasons"])
 
 
 def test_flat_prices_give_no_bollinger_macd_or_momentum_signal():

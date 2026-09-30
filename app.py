@@ -142,7 +142,9 @@ with st.sidebar.expander("Ajouter une structure", icon=":material/upload_file:")
     )
 
     structure_name = st.text_input(
-        "Nom de la structure"
+        "Nom de la structure",
+        help="Reprends le nom exact d'une structure existante pour "
+        "compléter son historique avec les séances du nouveau fichier."
     )
 
     if st.button("Importer", icon=":material/file_upload:", width="stretch"):
@@ -175,8 +177,14 @@ with st.sidebar.expander("Ajouter une structure", icon=":material/upload_file:")
                 load_signal_backtest.clear()
 
                 st.success(
-                    f"{import_report['name']} importée : "
-                    f"{import_report['rows_out']} séances.",
+                    (
+                        f"{import_report['name']} mise à jour : "
+                        f"{import_report['rows_added']} nouvelle(s) "
+                        f"séance(s), {import_report['rows_out']} au total."
+                        if import_report["updated"]
+                        else f"{import_report['name']} importée : "
+                        f"{import_report['rows_out']} séances."
+                    ),
                     icon=":material/check_circle:"
                 )
 

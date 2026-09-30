@@ -182,9 +182,9 @@ else:
     )
 
     st.caption(
-        f"{replayed_sessions} séances rejouées. Le sens de lecture du RSI "
-        "et de Bollinger a été réglé sur ces mêmes séances : leurs lignes "
-        "sont donc flatteuses par construction, et ne valent confirmation "
-        "que sur les séances à venir (bilan ci-dessus). La composante ML "
-        "n'est pas rejouée ici."
+        f"{replayed_sessions} séances rejouées. Les extrêmes du RSI et de "
+        "Bollinger sont lus titre par titre, d'après ce qui a suivi les "
+        "extrêmes précédents de ce titre : chaque séance est rejouée avec "
+        "ce qui était connu ce jour-là. La composante ML n'est pas rejouée "
+        "ici."
     )

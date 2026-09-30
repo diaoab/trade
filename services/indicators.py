@@ -7,6 +7,8 @@ de ce module sont pures et n'appellent rien d'autre.
 
 import numpy as np
 
+from services.targets import FUTURE_HORIZON_DAYS, compute_future_return
+
 
 MM_SHORT = 20
 MM_LONG = 50
@@ -23,6 +25,66 @@ MACD_SIGNAL = 9
 VOLATILITY_WINDOW = 10
 
 LIQUIDITY_WINDOW = 20
+
+RSI_OVERSOLD = 30
+RSI_OVERBOUGHT = 70
+
+# Calibration de la lecture des extremes (cf. calibrate_extremes) : nombre
+# minimal d'extremes passes dont l'issue est connue, et niveau de preuve
+# (statistique t de leur rendement moyen) en dessous desquels on ne conclut
+# pas.
+CALIBRATION_MIN_EVENTS = 30
+CALIBRATION_MIN_T = 2
+
+
+def calibrate_extremes(extreme, close, horizon=FUTURE_HORIZON_DAYS):
+    """Dit, seance par seance, comment lire un extreme sur CE titre.
+
+    extreme vaut +1 sur un exces haussier (RSI en surachat, cours au-dessus
+    de la bande haute de Bollinger), -1 sur un exces baissier, 0 sinon. Deux
+    lectures s'opposent : le suivi de tendance (l'exces se prolonge) et le
+    retour a la moyenne (l'exces se corrige). Le backtest montre qu'aucune
+    n'est vraie partout : sur PALM CI les exces se prolongent, sur TOTAL CI
+    ils se corrigent, sur BIBI CI ni l'un ni l'autre ne ressort.
+
+    On regarde donc ce que le cours de ce titre a fait, `horizon` seances
+    plus tard, apres chacun de ses extremes passes. Retourne +1 (lire en
+    suivi de tendance), -1 (lire a contre-courant) ou 0 (l'historique ne
+    tranche pas : trop peu d'extremes, ou issue trop partagee).
+
+    Sans regard vers l'avenir : a une seance donnee, seuls comptent les
+    extremes dont l'issue etait deja connue ce jour-la. La lecture d'une
+    seance passee est donc celle qu'on aurait eue a l'epoque.
+    """
+
+    outcome = (
+        extreme
+        * compute_future_return(close, horizon)
+    ).where(extreme != 0)
+
+    # L'issue d'un extreme n'est connue que `horizon` seances plus tard.
+    known = outcome.shift(horizon)
+
+    count = known.notna().cumsum()
+
+    mean = known.expanding().mean()
+
+    t_stat = mean / (
+        known.expanding().std()
+        / np.sqrt(count)
+    )
+
+    conclusive = (
+        (count >= CALIBRATION_MIN_EVENTS)
+        & (t_stat.abs() >= CALIBRATION_MIN_T)
+    )
+
+    return (
+        np.sign(mean)
+        .where(conclusive, 0)
+        .fillna(0)
+        .astype(int)
+    )
 
 
 def calculate_indicators(df):
@@ -261,6 +323,25 @@ def calculate_indicators(df):
     df["Bollinger_Width"] = (
         bollinger_width
         / df["Bollinger_Middle"]
+    )
+
+    # ==============================
+    # LECTURE DES EXTREMES
+    # ==============================
+
+    df["RSI_Reading"] = calibrate_extremes(
+        (df["RSI"] > RSI_OVERBOUGHT).astype(int)
+        - (df["RSI"] < RSI_OVERSOLD).astype(int),
+        df["Close"]
+    )
+
+    # Bandes confondues (cours fige) : pas un extreme, cf. decision_engine.
+    has_width = bollinger_width > 0
+
+    df["Bollinger_Reading"] = calibrate_extremes(
+        (has_width & (df["Close"] >= df["Bollinger_Upper"])).astype(int)
+        - (has_width & (df["Close"] <= df["Bollinger_Lower"])).astype(int),
+        df["Close"]
     )
 
     if "Volume" in df.columns:

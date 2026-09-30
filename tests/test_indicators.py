@@ -7,7 +7,7 @@ colonnes derivees) plutot que des valeurs exactes recalculees a la main.
 import numpy as np
 import pandas as pd
 
-from services.indicators import calculate_indicators
+from services.indicators import calculate_indicators, calibrate_extremes
 
 
 def _make_close_series(n=80, seed=0):
@@ -133,3 +133,66 @@ def test_macd_is_empty_during_warm_up_then_matches_the_reference_formula():
     pd.testing.assert_series_equal(
         df["MACD"].iloc[25:], expected.iloc[25:], check_names=False
     )
+
+
+# =========================================================
+# LECTURE DES EXTREMES
+# =========================================================
+
+def _extremes(next_move, events=40, horizon=5):
+    """Serie ou un exces haussier revient toutes les 10 seances et est suivi,
+    `horizon` seances plus tard, d'une variation proche de `next_move`.
+
+    La variation n'est pas strictement identique d'un exces a l'autre : sans
+    dispersion, le niveau de preuve ne serait pas calculable.
+    """
+
+    close = []
+    extreme = []
+    price = 100.0
+
+    for event in range(events):
+
+        after = price * (1 + next_move * (1 + 0.2 * (event % 3)))
+
+        close += [price] * horizon + [after] * 5
+        extreme += [1] + [0] * (horizon + 4)
+
+        price = after
+
+    return pd.Series(extreme), pd.Series(close)
+
+
+def test_extremes_followed_by_gains_are_read_as_trend():
+
+    reading = calibrate_extremes(*_extremes(next_move=0.02))
+
+    assert reading.iloc[-1] == 1
+
+
+def test_extremes_followed_by_losses_are_read_as_mean_reverting():
+
+    reading = calibrate_extremes(*_extremes(next_move=-0.02))
+
+    assert reading.iloc[-1] == -1
+
+
+def test_reading_stays_undecided_until_enough_outcomes_are_known():
+
+    reading = calibrate_extremes(*_extremes(next_move=0.02))
+
+    # 30 exces a l'issue connue sont exiges : rien avant le 30e.
+    assert (reading.iloc[:290] == 0).all()
+
+
+def test_reading_never_uses_the_future():
+    """Tronquer l'historique ne doit pas changer la lecture des seances
+    conservees : elle ne depend que de ce qui etait connu a l'epoque."""
+
+    extreme, close = _extremes(next_move=0.02)
+
+    full = calibrate_extremes(extreme, close)
+
+    truncated = calibrate_extremes(extreme.iloc[:350], close.iloc[:350])
+
+    pd.testing.assert_series_equal(full.iloc[:350], truncated)
