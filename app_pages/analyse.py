@@ -5,6 +5,11 @@ import streamlit.components.v1 as components
 from plotly.subplots import make_subplots
 
 from config import DEFAULT_WEIGHTS
+from services.assistant_chat import (
+    AssistantUnavailable,
+    build_context,
+    stream_answer
+)
 from services.avatar import avatar_html
 from services.analysis import analyse_session
 from services.loaders import load_prepared
@@ -793,15 +798,13 @@ if (
     # ASSISTANT VOCAL
     # =====================================================
 
+    analysed_session = latest["Date"] if "Date" in clean_df.columns else None
+
     components.html(
         avatar_html(
             build_narration(
                 structure_name=structures[selected_symbol]["name"],
-                session_date=(
-                    latest["Date"]
-                    if "Date" in clean_df.columns
-                    else None
-                ),
+                session_date=analysed_session,
                 result=result,
                 dividend=dividend_notice
             ),
@@ -809,6 +812,70 @@ if (
         ),
         height=230
     )
+
+    # =====================================================
+    # ASSISTANT CONVERSATIONNEL
+    # =====================================================
+
+    # La conversation vit avec l'analyse qu'elle commente : relancer une
+    # analyse repart d'une conversation vide.
+    chat = last_analysis.setdefault("chat", {"history": [], "shown": []})
+
+    with st.container(border=True):
+
+        st.markdown("**:material/forum: Poser une question sur ce résultat**")
+
+        st.caption(
+            "L'assistant répond à partir du résultat ci-dessus, sans rien "
+            "recalculer. Il passe par l'API Claude : service payant, clé "
+            "`ANTHROPIC_API_KEY` requise."
+        )
+
+        for role, text in chat["shown"]:
+
+            with st.chat_message(role):
+                st.write(text)
+
+        question = st.chat_input(
+            "Ex. : pourquoi ce signal ? Que veut dire le MACD ici ?",
+            key="assistant_question"
+        )
+
+        if question:
+
+            with st.chat_message("user"):
+                st.write(question)
+
+            chat["history"].append({"role": "user", "content": question})
+
+            try:
+
+                with st.chat_message("assistant"):
+
+                    answer = st.write_stream(
+                        stream_answer(
+                            build_context(
+                                structures[selected_symbol]["name"],
+                                analysed_session,
+                                result,
+                                ml_result,
+                                dividend_notice
+                            ),
+                            chat["history"]
+                        )
+                    )
+
+            except AssistantUnavailable as error:
+
+                # Question sans reponse : on la retire, sinon le prochain
+                # envoi enchainerait deux messages utilisateur.
+                chat["history"].pop()
+
+                st.warning(str(error), icon=":material/warning:")
+
+            else:
+
+                chat["shown"] += [("user", question), ("assistant", answer)]
 
     if model_metadata is not None:
 

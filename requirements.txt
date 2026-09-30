@@ -10,3 +10,6 @@ joblib>=1.4
 scikit-learn>=1.6
 # Sur macOS, xgboost a besoin d'OpenMP : brew install libomp
 xgboost>=2.1
+# Assistant conversationnel de la page Analyse (facultatif a l'usage : sans
+# cle ANTHROPIC_API_KEY, le reste de l'application fonctionne a l'identique).
+anthropic>=0.125

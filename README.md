@@ -94,6 +94,20 @@ python -m training.backtest_engine
 Montre ce que le cours a fait après chaque signal (tableau repris dans la
 page Journal).
 
+**Activer l'assistant conversationnel (facultatif) :**
+
+La page Analyse propose, sous le résultat, de poser des questions à un
+assistant qui explique la décision. Il passe par l'API Claude (service
+payant, facturé à l'usage) et demande une clé, à définir avant de lancer
+l'application :
+
+```bash
+export ANTHROPIC_API_KEY=...
+```
+
+Sans clé, tout le reste fonctionne, y compris l'assistant vocal qui lit le
+résultat (synthèse vocale du navigateur, gratuite).
+
 ## Structure du projet
 
 ```
