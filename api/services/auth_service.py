@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from api.errors.app_error import ConflictError, UnauthorizedError, ValidationError
 from api.models import User
+from api.models.base import utcnow
 from api.services import token_service
 
 
@@ -57,6 +58,9 @@ def login(db, email, password):
 
     if not token_service.verify_password(password, stored) or user is None:
         raise UnauthorizedError("E-mail ou mot de passe incorrect.")
+
+    # Enregistre avec la session, par le commit de open_session.
+    user.last_login_at = utcnow()
 
     return user, token_service.open_session(db, user)
 

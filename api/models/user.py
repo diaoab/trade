@@ -29,6 +29,16 @@ class User(Base):
 
     preferences: Mapped[dict] = mapped_column(JSON, default=dict)
 
+    # "user" ou "admin" : un admin se connecte au back-office (trade_admin).
+    # Attribue par python -m api.scripts.grant_admin, jamais par l'API
+    # publique.
+    role: Mapped[str] = mapped_column(String(20), default="user", server_default="user")
+
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utcnow
@@ -39,6 +49,10 @@ class User(Base):
         cascade="all, delete-orphan",
         order_by="Position.buy_date"
     )
+
+    @property
+    def is_admin(self):
+        return self.role == "admin"
 
     @property
     def effective_plan(self):

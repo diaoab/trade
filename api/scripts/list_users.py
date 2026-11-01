@@ -31,6 +31,7 @@ def main():
     for user, positions in rows:
         print(f"  id          : {user.id}")
         print(f"  email       : {user.email}")
+        print(f"  role        : {user.role}")
         print(f"  offre       : {user.effective_plan} (attribuee : {user.plan})")
         print(f"  pro jusqu'au: {user.pro_until.isoformat() if user.pro_until else '-'}")
         print(f"  positions   : {positions}")

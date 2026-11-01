@@ -1,4 +1,4 @@
-"""Administration : import des historiques, cours du jour, modele."""
+"""Administration des donnees : historiques, cours du jour, modele."""
 
 import io
 import logging
@@ -10,6 +10,7 @@ import time
 from core.constants import MODEL_DIR
 
 from core.engine import market_data
+from core.engine.predictor import load_model_metadata
 
 from api.errors.app_error import BadGatewayError, ServiceUnavailableError, ValidationError
 from api.services import market_service, quotes_feed
@@ -26,6 +27,37 @@ TRAINING_LOCK = MODEL_DIR / ".training.lock"
 # Au-dela, un verrou est celui d'un entrainement interrompu (conteneur
 # redemarre) et peut etre repris.
 STALE_LOCK_SECONDS = 2 * 3600
+
+
+def list_structures():
+    """Titres disponibles, avec l'etendue de leur historique : un titre dont
+    la derniere seance date se voit tout de suite."""
+
+    rows = []
+
+    for symbol, entry in market_data.get_structures().items():
+
+        row = {"symbol": symbol, "name": entry["name"], "dividends": len(entry["dividends"])}
+
+        try:
+            df = market_data.load_structure(symbol, adjust_dividends=False)
+            dates = df["Date"] if "Date" in df else df.index
+            row.update(rows=len(df), first_date=dates.min(), last_date=dates.max(), error=None)
+        except Exception as error:
+            row.update(rows=0, first_date=None, last_date=None, error=str(error))
+
+        rows.append(row)
+
+    return market_service.to_json(rows)
+
+
+def model_status():
+    """Fiche du dernier entrainement, et si un entrainement tourne."""
+
+    return {
+        "metadata": market_service.to_json(load_model_metadata()),
+        "training": TRAINING_LOCK.exists()
+    }
 
 
 def upload_structure(name, content):

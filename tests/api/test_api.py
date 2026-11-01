@@ -488,7 +488,22 @@ def test_confirm_other_users_payment_is_refused(client, paydunya_sandbox):
 # ADMINISTRATION ET FLUX DE COURS
 # =========================================================
 
-def test_admin_requires_key(client, monkeypatch):
+def _admin(client, email="admin@example.com"):
+    """Compte promu admin directement en base (comme grant_admin)."""
+
+    headers = _signup(client, email)
+
+    db = next(main.app.dependency_overrides[get_db]())
+
+    from api.models import User
+
+    db.query(User).filter(User.email == email).update({"role": "admin"})
+    db.commit()
+
+    return headers
+
+
+def test_admin_requires_key_or_admin_account(client, monkeypatch):
 
     monkeypatch.setattr(settings, "ADMIN_API_KEY", "secret-admin")
 
@@ -499,6 +514,139 @@ def test_admin_requires_key(client, monkeypatch):
         content=b"",
         headers={"X-Admin-Key": "mauvais"}
     ).status_code == 403
+
+    # Un compte ordinaire n'entre pas ; un jeton invalide rend 401 (a
+    # rafraichir), pas 403.
+    assert client.get(f"{V1}/admin/stats", headers=_signup(client)).status_code == 403
+
+    assert client.get(
+        f"{V1}/admin/stats",
+        headers={"Authorization": "Bearer pas-un-jeton"}
+    ).status_code == 401
+
+    assert client.get(f"{V1}/admin/stats", headers={"X-Admin-Key": "secret-admin"}).status_code == 200
+
+    assert client.get(f"{V1}/admin/stats", headers=_admin(client)).status_code == 200
+
+
+def test_role_is_never_set_by_the_public_api(client):
+
+    response = client.post(
+        f"{V1}/auth/register",
+        json={"email": "pirate@example.com", "password": "motdepasse1", "role": "admin"}
+    )
+
+    assert _data(response)["user"]["role"] == "user"
+
+
+def test_admin_stats_and_structures(client):
+
+    headers = _admin(client)
+
+    _signup(client, "b@example.com")
+
+    stats = _data(client.get(f"{V1}/admin/stats", headers=headers))
+
+    assert stats["users"]["total"] == 2
+    assert stats["users"]["admins"] == 1
+    assert stats["structures"] == 1
+    assert len(stats["signups"]) == 30
+    assert stats["signups"][-1]["count"] == 2
+
+    structures = _data(client.get(f"{V1}/admin/structures", headers=headers))
+
+    assert structures[0]["symbol"] == "TEST"
+    assert structures[0]["rows"] == 150
+
+    assert "training" in _data(client.get(f"{V1}/admin/model", headers=headers))
+
+
+def test_admin_manages_users(client):
+
+    headers = _admin(client)
+
+    for index in range(3):
+        _signup(client, f"user{index}@example.com")
+
+    page = _data(client.get(f"{V1}/admin/users?limit=2", headers=headers))
+
+    assert page["pagination"] == {"total": 4, "page": 1, "limit": 2, "pages": 2}
+    assert all("password_hash" not in user for user in page["items"])
+
+    found = _data(client.get(f"{V1}/admin/users?search=USER1", headers=headers))["items"]
+
+    assert [user["email"] for user in found] == ["user1@example.com"]
+
+    user_id = found[0]["id"]
+
+    updated = _data(client.patch(f"{V1}/admin/users/{user_id}", json={"plan": "pro"}, headers=headers))
+
+    assert updated["effective_plan"] == "pro"
+
+    assert _data(client.get(f"{V1}/admin/users?plan=pro", headers=headers))["pagination"]["total"] == 1
+
+    assert client.patch(
+        f"{V1}/admin/users/{user_id}",
+        json={"plan": "platinum"},
+        headers=headers
+    ).status_code == 422
+
+    detail = _data(client.get(f"{V1}/admin/users/{user_id}", headers=headers))
+
+    assert detail["email"] == "user1@example.com"
+    assert detail["payments"] == []
+
+    assert client.get(f"{V1}/admin/users/9999", headers=headers).status_code == 404
+
+
+def test_admin_cannot_demote_itself(client):
+
+    headers = _admin(client)
+
+    me = _data(client.get(f"{V1}/admin/users", headers=headers))["items"][0]
+
+    response = client.patch(f"{V1}/admin/users/{me['id']}", json={"role": "user"}, headers=headers)
+
+    assert response.status_code == 422
+
+
+def test_admin_revokes_sessions(client):
+
+    headers = _admin(client)
+
+    session = _register(client, "victime@example.com")
+
+    user_id = session["user"]["id"]
+
+    assert client.post(f"{V1}/admin/users/{user_id}/revoke-sessions", headers=headers).status_code == 200
+
+    assert client.post(
+        f"{V1}/auth/refresh",
+        json={"refresh_token": session["refresh_token"]}
+    ).status_code == 401
+
+
+def test_account_actions_need_an_admin_account_not_the_key(client, monkeypatch):
+
+    monkeypatch.setattr(settings, "ADMIN_API_KEY", "secret-admin")
+
+    user_id = _register(client)["user"]["id"]
+
+    assert client.patch(
+        f"{V1}/admin/users/{user_id}",
+        json={"plan": "pro"},
+        headers={"X-Admin-Key": "secret-admin"}
+    ).status_code == 403
+
+
+def test_admin_lists_payments(client):
+
+    headers = _admin(client)
+
+    page = _data(client.get(f"{V1}/admin/payments", headers=headers))
+
+    assert page["items"] == []
+    assert page["pagination"]["total"] == 0
 
 
 def test_quotes_feed_appends_sessions(client):

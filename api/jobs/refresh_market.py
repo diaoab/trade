@@ -11,7 +11,8 @@ import json
 import logging
 import sys
 
-from api.services import admin_service, quotes_feed
+from api.services import quotes_feed
+from api.services.admin import data_service
 from api.utils.logger import configure_logging
 
 
@@ -35,7 +36,7 @@ def main(argv=None):
     logger.info("Cours mis a jour : %s", json.dumps(report, default=str, ensure_ascii=False))
 
     if args.retrain:
-        return admin_service.retrain()
+        return data_service.retrain()
 
     return 0
 

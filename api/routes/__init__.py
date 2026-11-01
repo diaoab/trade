@@ -4,7 +4,7 @@ from fastapi import APIRouter
 
 from api.routes import (
     account_route,
-    admin_route,
+    admin,
     auth_route,
     billing_route,
     market_route,
@@ -20,6 +20,6 @@ for module in (
     market_route,
     portfolio_route,
     billing_route,
-    admin_route
+    admin
 ):
     api_router.include_router(module.router)

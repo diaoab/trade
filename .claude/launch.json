@@ -9,6 +9,17 @@
         ".venv/bin/python -m alembic upgrade head && .venv/bin/python -m uvicorn api.main:app --port 8000 --reload"
       ],
       "port": 8000
+    },
+    {
+      "name": "admin",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "../trade_admin",
+        "run",
+        "dev"
+      ],
+      "port": 5176
     }
   ]
 }

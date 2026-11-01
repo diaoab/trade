@@ -10,7 +10,8 @@ Le projet est réparti en trois dossiers voisins :
 
 - `trade_back` (ce dossier) : cœur métier (`core/engine/`, `core/constants.py`),
   entraînement du modèle, API FastAPI, données et modèle ;
-- `trade_admin` : interface Streamlit, qui importe le paquet `api` d'ici ;
+- `trade_admin` : back-office React (comptes, paiements, historiques, modèle),
+  branché sur l'API ;
 - `trade_mobile` : app Expo (iPhone, Android, web) branchée sur l'API.
 
 **Ce n'est pas un outil de conseil financier.** Les résultats sont
@@ -52,7 +53,7 @@ virtuel activé : la même ligne fonctionne sur macOS, Linux et Windows.
 
 ## Utilisation
 
-**Lancer l'interface Streamlit :** voir `../trade_admin/README.md`.
+**Lancer le back-office :** voir `../trade_admin/README.md`.
 
 Les historiques `.xlsx` sont lus dans le dossier `data/` (un fichier par
 titre). Les
@@ -95,7 +96,7 @@ page Journal).
 
 **Activer l'assistant conversationnel (facultatif) :**
 
-La page Analyse (trade_admin) et l'API proposent de poser des questions à
+L'API propose de poser des questions à
 un assistant qui explique la décision. Il passe par l'API Claude (service
 payant, facturé à l'usage) et demande une clé, à définir avant de lancer
 l'application :
@@ -196,6 +197,7 @@ api/
                      (limites de débit, CORS), db (session SQLAlchemy)
   routes/          Déclaration des routes, sous /trade/v1
   controllers/     Lecture de la requête, mise en forme de la réponse
+                     (admin/ : back-office, idem pour routes/ et services/)
   services/        Logique métier (auth, jetons, compte, marché,
                      assistant, portefeuille, paiement, admin)
   models/          Tables SQLAlchemy (un fichier par table)
@@ -207,8 +209,8 @@ api/
   utils/           Format des réponses, logger, format_user
   migrations/      Migrations Alembic
   jobs/            Tâches planifiées (cours du soir, purge des jetons)
-  scripts/         seed_dev (compte de démonstration local), list_users,
-                     grant_pro, reset_password
+  scripts/         seed_dev (comptes de démonstration locaux), list_users,
+                     grant_admin, grant_pro, reset_password
 ```
 
 Toutes les réponses JSON ont la même forme :
@@ -231,7 +233,15 @@ Toutes les réponses JSON ont la même forme :
 | `GET /portfolio`, `POST /portfolio/positions`, `DELETE /portfolio/positions/{id}` | Portefeuille |
 | `GET /billing/offer`, `POST /billing/checkout`, `POST /billing/confirm` | Offre Pro et paiement PayDunya |
 | `GET /billing/return`, `POST /billing/ipn` | Retour du client et notification PayDunya |
-| `POST /admin/structures`, `/admin/refresh`, `/admin/retrain` | Import d'historique, cours du jour, réentraînement (en-tête `X-Admin-Key`) |
+| `GET /admin/stats` | Indicateurs du tableau de bord du back-office |
+| `GET /admin/users`, `GET/PATCH /admin/users/{id}`, `POST /admin/users/{id}/revoke-sessions` | Comptes (recherche, pagination), offre Pro offerte, rôle, déconnexion forcée |
+| `GET /admin/payments` | Paiements PayDunya |
+| `GET/POST /admin/structures`, `POST /admin/refresh`, `POST /admin/retrain`, `GET /admin/model` | Historiques, import, cours du jour, réentraînement, état du modèle |
+
+Les routes `/admin` acceptent le jeton d'un compte au rôle `admin` (back-office)
+ou l'en-tête `X-Admin-Key` (tâches planifiées, curl). Modifier un compte exige
+un compte admin : on sait ainsi qui a fait quoi. Le rôle ne s'attribue jamais
+par l'API publique, seulement par `python -m api.scripts.grant_admin <email>`.
 
 `GET /health` (hors préfixe) vérifie aussi la base.
 
@@ -242,6 +252,10 @@ python -m alembic upgrade head
 python -m api.scripts.seed_dev
 python -m uvicorn api.main:app --reload
 ```
+
+`seed_dev` crée un compte de démonstration et un compte du back-office
+(identifiants affichés). Scripts de gestion des comptes : `list_users`,
+`grant_admin`, `grant_pro`, `reset_password` (`python -m api.scripts.<nom>`).
 
 SQLite par défaut (`data/saas.db`), documentation sur
 http://127.0.0.1:8000/docs. Pour une base créée avant les migrations :
@@ -268,7 +282,11 @@ Toutes les variables sont listées dans [.env.example](.env.example). Avec
    18 h 30 UTC), purge des jetons expirés, sauvegarde quotidienne de la base
    et des données (`deploy/backup-postgres.sh`, copie Google Drive si rclone
    est configuré).
-5. Importer les historiques puis entraîner le modèle :
+5. Créer le premier administrateur (compte inscrit depuis l'app) :
+   `docker compose -f docker-compose.prod.yml exec backend python -m api.scripts.grant_admin moi@exemple.com`,
+   puis déployer le back-office (`../trade_admin/README.md`).
+6. Importer les historiques puis entraîner le modèle (depuis le back-office,
+   ou en curl) :
    ```bash
    curl -X POST "https://api.exemple.com/trade/v1/admin/structures?name=PALM%20CI" \
         -H "X-Admin-Key: $ADMIN_API_KEY" --data-binary @PALM_CI.xlsx
