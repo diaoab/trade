@@ -8,7 +8,7 @@ décision qui pondère les deux.
 
 Le projet est réparti en trois dossiers voisins :
 
-- `trade_back` (ce dossier) : cœur métier (`api/services/engine/`, `api/config/constants.py`),
+- `trade_back` (ce dossier) : cœur métier (`core/engine/`, `core/constants.py`),
   entraînement du modèle, API FastAPI, données et modèle ;
 - `trade_admin` : interface Streamlit, qui importe le paquet `api` d'ici ;
 - `trade_mobile` : app Expo (iPhone, Android, web) branchée sur l'API.
@@ -57,14 +57,14 @@ virtuel activé : la même ligne fonctionne sur macOS, Linux et Windows.
 Les historiques `.xlsx` sont lus dans le dossier `data/` (un fichier par
 titre). Les
 colonnes sont détectées automatiquement, en français comme en anglais (voir
-`COLUMN_CANDIDATES` dans `api/services/engine/market_data.py`), et les nombres au format
+`COLUMN_CANDIDATES` dans `core/engine/market_data.py`), et les nombres au format
 francophone (virgule décimale, espace comme séparateur de milliers) sont
 tolérés.
 
 **Entraîner (ou réentraîner) le modèle ML :**
 
 ```bash
-python -m api.training.train
+python -m core.training.train
 ```
 
 Empile tous les titres de `data/`, calcule les indicateurs, sélectionne le
@@ -87,7 +87,7 @@ python -m pytest
 **Rejouer les signaux techniques sur l'historique :**
 
 ```bash
-python -m api.training.backtest_engine
+python -m core.training.backtest_engine
 ```
 
 Montre ce que le cours a fait après chaque signal (tableau repris dans la
@@ -110,9 +110,9 @@ résultat (synthèse vocale du navigateur, gratuite).
 ## Structure du projet
 
 ```
-api/                    Tout le code (même découpage que le back Sign)
-  config/constants.py     Chemins, logging, valeurs par défaut partagées
-  services/engine/        Cœur métier, sans base de données :
+core/                   Cœur métier, sans base de données ni HTTP
+  constants.py            Chemins, logging, valeurs par défaut partagées
+  engine/
     market_data.py          Chargement/normalisation des historiques Excel,
                               dividendes, import
     indicators.py           Indicateurs techniques et lecture des extrêmes
@@ -130,10 +130,12 @@ api/                    Tout le code (même découpage que le back Sign)
     train.py                Entraînement du modèle ML (CLI)
     walk_forward.py         Stabilité du modèle dans le temps (CLI)
     backtest_engine.py      Backtest des signaux techniques (CLI)
-  ...                     API FastAPI du service en ligne (voir plus bas)
+api/                    API FastAPI, même découpage que le back Sign
+                          (voir plus bas) ; importe core, jamais l'inverse
 deploy/                 Nginx, installation du VPS, déploiement,
                           sauvegardes, crontab, initdb Postgres
-tests/                  Tests pytest des services et de l'API
+tests/core/             Tests pytest du cœur métier
+tests/api/              Tests pytest de l'API
 data/                   Historiques .xlsx, portefeuille et réglages
                           (non versionnés), registre des structures et
                           jours fériés saisis
@@ -149,7 +151,7 @@ results/                Sorties d'entraînement, backtest, journal
   entraînement pour voir s'il bat la référence naïve sur le test, pas
   seulement l'accuracy brute.
 - **Moteur de décision heuristique** : les poids de `decision_engine.py`
-  restent des conventions. Le backtest (`python -m api.training.backtest_engine`,
+  restent des conventions. Le backtest (`python -m core.training.backtest_engine`,
   repris dans la page Journal) montre que seuls les extrêmes du RSI et de
   Bollinger ont été suivis de mouvements nets, et dans un sens qui dépend du
   titre : ils sont donc lus titre par titre, d'après l'historique de chacun
@@ -179,7 +181,7 @@ results/                Sorties d'entraînement, backtest, journal
 
 `api/` est une API FastAPI multi-utilisateurs (comptes, portefeuille et
 réglages par personne, quota de questions à l'assistant, abonnement Pro)
-qui réutilise `api/services/engine/`. `../trade_mobile` (app Expo pour iPhone, Android
+qui réutilise `core/engine/`. `../trade_mobile` (app Expo pour iPhone, Android
 et le web) la consomme.
 
 ### Organisation
@@ -195,9 +197,7 @@ api/
   routes/          Déclaration des routes, sous /trade/v1
   controllers/     Lecture de la requête, mise en forme de la réponse
   services/        Logique métier (auth, jetons, compte, marché,
-                     assistant, portefeuille, paiement, admin) ;
-                     engine/ : cœur d'analyse et modèle ML
-  training/        Entraînement et backtests (CLI)
+                     assistant, portefeuille, paiement, admin)
   models/          Tables SQLAlchemy (un fichier par table)
   validations/     Corps de requête attendus (Pydantic), un fichier
                      par domaine (auth, account, market, portfolio, billing)

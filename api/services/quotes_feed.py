@@ -10,7 +10,7 @@ seance :
 
 `name` designe le titre comme dans l'application ("PALM CI", "PALMCI" et
 "palm_ci" sont reconnus). Les seances deja connues sont mises a jour, les
-nouvelles ajoutees (cf. api.services.engine.market_data.save_uploaded_structure).
+nouvelles ajoutees (cf. core.engine.market_data.save_uploaded_structure).
 
 Lancer a la main : python -m api.jobs.refresh_market
 """
@@ -22,7 +22,7 @@ import os
 import httpx
 import pandas as pd
 
-from api.services.engine.market_data import match_structure_name, save_uploaded_structure
+from core.engine.market_data import match_structure_name, save_uploaded_structure
 
 
 logger = logging.getLogger(__name__)

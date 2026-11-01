@@ -11,7 +11,7 @@ from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
 
-from api.config.constants import BASE_DIR, DATA_DIR
+from core.constants import BASE_DIR, DATA_DIR
 
 
 load_dotenv(BASE_DIR / ".env")

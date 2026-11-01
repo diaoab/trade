@@ -2,8 +2,8 @@
 
 import pandas as pd
 
-from api.services.engine import market_data
-from api.services.engine.portfolio import value_position
+from core.engine import market_data
+from core.engine.portfolio import value_position
 
 from api.errors.app_error import NotFoundError
 from api.models import Position

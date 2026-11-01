@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
-from api.services.engine.assistant_chat import AssistantUnavailable, build_context, stream_answer
+from core.engine.assistant_chat import AssistantUnavailable, build_context, stream_answer
 
 from api.errors.app_error import ServiceUnavailableError, TooManyRequestsError, ValidationError
 from api.models import AssistantUsage

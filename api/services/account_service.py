@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from api.config.constants import INDICATOR_OPTIONS
+from core.constants import INDICATOR_OPTIONS
 
 from api.config.settings import ASSISTANT_DAILY_LIMITS
 from api.errors.app_error import ValidationError

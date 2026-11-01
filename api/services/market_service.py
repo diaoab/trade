@@ -11,23 +11,23 @@ from functools import lru_cache
 import numpy as np
 import pandas as pd
 
-from api.config.constants import (
+from core.constants import (
     DEFAULT_ADJUST_DIVIDENDS,
     DEFAULT_ROUND_TRIP_FEE,
     DEFAULT_WEIGHTS,
     INDICATOR_DEFAULTS,
     INDICATOR_OPTIONS
 )
-from api.services.engine import market_data
-from api.services.engine.analysis import (
+from core.engine import market_data
+from core.engine.analysis import (
     analyse_session,
     latest_sessions,
     next_dividend_cutoff,
     session_changes
 )
-from api.services.engine.indicators import calculate_indicators
-from api.services.engine.narration import build_narration
-from api.services.engine.predictor import load_model_metadata
+from core.engine.indicators import calculate_indicators
+from core.engine.narration import build_narration
+from core.engine.predictor import load_model_metadata
 
 
 # Seances renvoyees pour le graphique : environ un an de bourse.

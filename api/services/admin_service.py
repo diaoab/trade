@@ -7,9 +7,9 @@ import subprocess
 import sys
 import time
 
-from api.config.constants import MODEL_DIR
+from core.constants import MODEL_DIR
 
-from api.services.engine import market_data
+from core.engine import market_data
 
 from api.errors.app_error import BadGatewayError, ServiceUnavailableError, ValidationError
 from api.services import market_service, quotes_feed
@@ -79,7 +79,7 @@ def retrain():
         return 0
 
     try:
-        result = subprocess.run([sys.executable, "-m", "api.training.train"], check=False)
+        result = subprocess.run([sys.executable, "-m", "core.training.train"], check=False)
     finally:
         TRAINING_LOCK.unlink(missing_ok=True)
 

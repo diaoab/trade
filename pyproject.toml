@@ -1,5 +1,5 @@
 [tool.pytest.ini_options]
-# Permet aux tests d'importer le paquet "api" comme le fait
+# Permet aux tests d'importer les paquets "core" et "api" comme le fait
 # l'application, sans installer le projet en mode editable.
 pythonpath = ["."]
 testpaths = ["tests"]

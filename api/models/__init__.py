@@ -2,7 +2,7 @@
 et consommation de l'assistant.
 
 Les historiques de cours restent partages entre tous les utilisateurs
-(fichiers de data/, cf. api.services.engine.market_data) : seul ce qui est propre a
+(fichiers de data/, cf. core.engine.market_data) : seul ce qui est propre a
 une personne est ici.
 """
 

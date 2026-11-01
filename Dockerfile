@@ -22,6 +22,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt "psycopg[binary]>=3.2"
 
 COPY alembic.ini ./
+COPY core core
 COPY api api
 
 # Utilisateur non-root ; dossiers des volumes crees avec les bons droits

@@ -1,7 +1,7 @@
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from api.services.engine import market_data
+from core.engine import market_data
 
 from api.config.db import get_db
 from api.errors.app_error import ValidationError
