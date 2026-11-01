@@ -1,9 +1,9 @@
-"""Tests du backtest des signaux techniques (services/backtest.py)."""
+"""Tests du backtest des signaux techniques (api/services/engine/backtest.py)."""
 
 import numpy as np
 import pandas as pd
 
-from services.backtest import (
+from api.services.engine.backtest import (
     SIGNAL_INDICATORS,
     replay_signals,
     summarize_scores,

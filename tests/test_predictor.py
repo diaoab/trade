@@ -1,4 +1,4 @@
-"""Tests de services/predictor.py, sans dependre d'un modele reellement
+"""Tests de api/services/engine/predictor.py, sans dependre d'un modele reellement
 entraine sur disque : un faux modele scikit-learn-like (predict/predict_proba)
 suffit a exercer predict_row()."""
 
@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from services import predictor
-from services.predictor import ModelUnavailable, predict_row
+from api.services.engine import predictor
+from api.services.engine.predictor import ModelUnavailable, predict_row
 
 
 FEATURES = ["RSI", "Distance_MM20"]

@@ -1,10 +1,10 @@
-"""Tests du moteur de decision (services/decision_engine.py).
+"""Tests du moteur de decision (api/services/engine/decision_engine.py).
 
 analyze() ne lit ses arguments que par indexation ("row['Close']", ...) : un
 simple dict suffit donc a simuler une seance, sans construire un DataFrame.
 """
 
-from services.decision_engine import analyze
+from api.services.engine.decision_engine import analyze
 
 
 NEUTRAL_ML_RESULT = {"probability_up": 0.5}
@@ -298,3 +298,31 @@ def test_risk_tempers_conviction_without_giving_a_direction():
     # Les deux restent sous 50 ; le titre agite est ramene plus pres de 50.
     assert calm["score"] < nervous["score"] < 50
     assert calm["decision"] == "VENDRE"
+
+
+def test_details_give_each_indicator_its_direction():
+
+    row = _base_row(Close=95.0, MM20=100.0, MM50=90.0, MACD=1.0, MACD_Signal=2.0)
+
+    result = analyze(
+        row,
+        NEUTRAL_ML_RESULT,
+        ["MM20", "MM50", "MACD", "Momentum"],
+        {"Technique": 60, "Machine Learning": 0, "Risque": 40}
+    )
+
+    details = {d["indicator"]: d for d in result["details"]}
+
+    assert details["MM20"]["tone"] == "negative"
+    assert details["MM50"]["tone"] == "positive"
+    assert details["Momentum"]["tone"] == "neutral"
+    # Indicatif : son sens est donne, mais il ne compte pas dans le score,
+    # et la mention est retiree du texte (l'app l'affiche a part).
+    assert details["MACD"] == {
+        "indicator": "MACD",
+        "tone": "negative",
+        "counted": False,
+        "text": details["MACD"]["text"]
+    }
+    assert "Indicatif" not in details["MACD"]["text"]
+    assert details["Modèle"]["counted"] is False

@@ -1,10 +1,10 @@
-"""Tests de services/prediction_log.py, sur un fichier temporaire pour ne
+"""Tests de api/services/engine/prediction_log.py, sur un fichier temporaire pour ne
 jamais toucher au vrai journal (results/prediction_log.csv)."""
 
 import pandas as pd
 import pytest
 
-from services import prediction_log
+from api.services.engine import prediction_log
 
 
 @pytest.fixture(autouse=True)

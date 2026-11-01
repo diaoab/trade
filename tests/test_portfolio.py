@@ -1,9 +1,9 @@
-"""Tests du portefeuille (services/portfolio.py)."""
+"""Tests du portefeuille (api/services/engine/portfolio.py)."""
 
 import pandas as pd
 import pytest
 
-from services import portfolio
+from api.services.engine import portfolio
 
 
 def test_positions_round_trip_and_invalid_lines_are_dropped(

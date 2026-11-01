@@ -39,3 +39,11 @@ Thumbs.db
 .agents/skills/*
 .claude/skills/*
 .claude/scheduled_tasks.lock
+
+# Base des comptes du service en ligne en local (api/) : donnees personnelles.
+data/saas.db
+
+# Configuration et journaux du serveur
+.env
+logs/
+backups/

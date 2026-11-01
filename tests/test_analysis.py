@@ -1,9 +1,9 @@
 """Tests des aides d'analyse partagees entre les pages
-(services/analysis.py)."""
+(api/services/engine/analysis.py)."""
 
 import pandas as pd
 
-from services.analysis import (
+from api.services.engine.analysis import (
     next_dividend_cutoff,
     relative_performance,
     session_changes

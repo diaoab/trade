@@ -1,4 +1,4 @@
-"""Tests de l'assistant conversationnel (services/assistant_chat.py), sans
+"""Tests de l'assistant conversationnel (api/services/engine/assistant_chat.py), sans
 appel reseau : le client de l'API est remplace par un faux."""
 
 from types import SimpleNamespace
@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from services.assistant_chat import (
+from api.services.engine.assistant_chat import (
     MODEL,
     AssistantUnavailable,
     build_context,

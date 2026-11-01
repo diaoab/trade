@@ -1,0 +1,38 @@
+# Environnements et caches Python — reinstalles dans l'image
+.venv
+venv
+**/__pycache__
+.pytest_cache
+
+# Variables d'environnement — JAMAIS dans l'image
+.env
+.env.*
+!.env.example
+
+# Git, Docker, CI
+.git
+.gitignore
+.gitattributes
+.github
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Documentation, tests, deploiement
+*.md
+tests
+deploy
+docs_import
+
+# Donnees locales — en production, sur le volume persistant
+data
+models
+results
+logs
+backups
+
+# OS / IDE
+.DS_Store
+.claude
+.vscode
+.idea

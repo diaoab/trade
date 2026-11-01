@@ -6,6 +6,13 @@ classiques (moyennes mobiles, RSI, MACD, Bollinger), un modèle de machine
 learning entraîné sur l'ensemble des titres disponibles, et un moteur de
 décision qui pondère les deux.
 
+Le projet est réparti en trois dossiers voisins :
+
+- `trade_back` (ce dossier) : cœur métier (`api/services/engine/`, `api/config/constants.py`),
+  entraînement du modèle, API FastAPI, données et modèle ;
+- `trade_admin` : interface Streamlit, qui importe le paquet `api` d'ici ;
+- `trade_mobile` : app Expo (iPhone, Android, web) branchée sur l'API.
+
 **Ce n'est pas un outil de conseil financier.** Les résultats sont
 expérimentaux ; voir [Limites connues](#limites-connues) avant d'en tirer
 la moindre conclusion.
@@ -45,23 +52,19 @@ virtuel activé : la même ligne fonctionne sur macOS, Linux et Windows.
 
 ## Utilisation
 
-**Lancer l'application :**
+**Lancer l'interface Streamlit :** voir `../trade_admin/README.md`.
 
-```bash
-python -m streamlit run app.py
-```
-
-Elle lit les historiques `.xlsx` du dossier `data/` (un fichier par titre ;
-un nouveau titre peut aussi être importé depuis la barre latérale). Les
+Les historiques `.xlsx` sont lus dans le dossier `data/` (un fichier par
+titre). Les
 colonnes sont détectées automatiquement, en français comme en anglais (voir
-`COLUMN_CANDIDATES` dans `services/market_data.py`), et les nombres au format
+`COLUMN_CANDIDATES` dans `api/services/engine/market_data.py`), et les nombres au format
 francophone (virgule décimale, espace comme séparateur de milliers) sont
 tolérés.
 
 **Entraîner (ou réentraîner) le modèle ML :**
 
 ```bash
-python -m training.train
+python -m api.training.train
 ```
 
 Empile tous les titres de `data/`, calcule les indicateurs, sélectionne le
@@ -81,14 +84,10 @@ meilleur modèle par validation croisée glissante, puis sauvegarde dans
 python -m pytest
 ```
 
-Les tests incluent un test de fumée (`tests/test_app_smoke.py`) qui lance
-réellement chaque page : c'est lui qui signale une fonction Streamlit
-absente de la version installée.
-
 **Rejouer les signaux techniques sur l'historique :**
 
 ```bash
-python -m training.backtest_engine
+python -m api.training.backtest_engine
 ```
 
 Montre ce que le cours a fait après chaque signal (tableau repris dans la
@@ -96,8 +95,8 @@ page Journal).
 
 **Activer l'assistant conversationnel (facultatif) :**
 
-La page Analyse propose, sous le résultat, de poser des questions à un
-assistant qui explique la décision. Il passe par l'API Claude (service
+La page Analyse (trade_admin) et l'API proposent de poser des questions à
+un assistant qui explique la décision. Il passe par l'API Claude (service
 payant, facturé à l'usage) et demande une clé, à définir avant de lancer
 l'application :
 
@@ -111,40 +110,30 @@ résultat (synthèse vocale du navigateur, gratuite).
 ## Structure du projet
 
 ```
-app.py                  Point d'entrée Streamlit : marque, navigation,
-                          import de structures, sélection de structure
-app_pages/
-  analyse.py              Cours, graphique, comparaison à l'indice,
-                            décision, assistants vocal et conversationnel
-  marche.py               Signal de chaque structure, « Quoi de neuf »
-  portefeuille.py         Lignes détenues, plus-value, dividendes, frais
-  dividendes.py           Rendement et calendrier des détachements
-  journal.py              Analyses passées confrontées au cours réel,
-                            backtest des signaux (5, 20, 60 séances)
-  parametres.py           Palette, indicateurs, dividendes, jours fériés,
-                            indice de référence, frais de courtage
-config.py               Chemins, logging, valeurs par défaut partagées
-services/
-  market_data.py          Chargement/normalisation des historiques Excel,
-                            dividendes, import
-  indicators.py           Indicateurs techniques et lecture des extrêmes
-                            calibrée titre par titre
-  decision_engine.py      Score technique + ML pondéré -> décision
-  analysis.py             Analyse d'une séance, partagée entre les pages
-  backtest.py             Rejeu des signaux sur l'historique
-  predictor.py            Chargement du modèle et prédiction
-  portfolio.py            Positions saisies et leur valorisation
-  trading_calendar.py     Jours fériés BRVM
-  prediction_log.py       Journal des analyses
-  narration.py, avatar.py Assistant vocal
-  assistant_chat.py       Assistant conversationnel (API Claude)
-  loaders.py              Chargements Streamlit mis en cache
-  themes.py               Palettes de couleurs
-training/
-  train.py                Entraînement du modèle ML (CLI)
-  walk_forward.py         Stabilité du modèle dans le temps (CLI)
-  backtest_engine.py      Backtest des signaux techniques (CLI)
-tests/                  Tests pytest, dont un test de fumée des pages
+api/                    Tout le code (même découpage que le back Sign)
+  config/constants.py     Chemins, logging, valeurs par défaut partagées
+  services/engine/        Cœur métier, sans base de données :
+    market_data.py          Chargement/normalisation des historiques Excel,
+                              dividendes, import
+    indicators.py           Indicateurs techniques et lecture des extrêmes
+                              calibrée titre par titre
+    decision_engine.py      Score technique + ML pondéré -> décision
+    analysis.py             Analyse d'une séance
+    backtest.py             Rejeu des signaux sur l'historique
+    predictor.py            Chargement du modèle et prédiction
+    portfolio.py            Positions saisies et leur valorisation
+    trading_calendar.py     Jours fériés BRVM
+    prediction_log.py       Journal des analyses
+    narration.py            Texte lu par l'assistant vocal
+    assistant_chat.py       Assistant conversationnel (API Claude)
+  training/
+    train.py                Entraînement du modèle ML (CLI)
+    walk_forward.py         Stabilité du modèle dans le temps (CLI)
+    backtest_engine.py      Backtest des signaux techniques (CLI)
+  ...                     API FastAPI du service en ligne (voir plus bas)
+deploy/                 Nginx, installation du VPS, déploiement,
+                          sauvegardes, crontab, initdb Postgres
+tests/                  Tests pytest des services et de l'API
 data/                   Historiques .xlsx, portefeuille et réglages
                           (non versionnés), registre des structures et
                           jours fériés saisis
@@ -160,7 +149,7 @@ results/                Sorties d'entraînement, backtest, journal
   entraînement pour voir s'il bat la référence naïve sur le test, pas
   seulement l'accuracy brute.
 - **Moteur de décision heuristique** : les poids de `decision_engine.py`
-  restent des conventions. Le backtest (`python -m training.backtest_engine`,
+  restent des conventions. Le backtest (`python -m api.training.backtest_engine`,
   repris dans la page Journal) montre que seuls les extrêmes du RSI et de
   Bollinger ont été suivis de mouvements nets, et dans un sens qui dépend du
   titre : ils sont donc lus titre par titre, d'après l'historique de chacun
@@ -185,3 +174,115 @@ results/                Sorties d'entraînement, backtest, journal
 - **Fichiers Excel non versionnés** : `data/*.xlsx` est dans `.gitignore`
   (ce sont des données, pas du code) — un clone du dépôt démarre sans
   historique tant qu'on n'en importe pas.
+
+## Service en ligne (API + app mobile)
+
+`api/` est une API FastAPI multi-utilisateurs (comptes, portefeuille et
+réglages par personne, quota de questions à l'assistant, abonnement Pro)
+qui réutilise `api/services/engine/`. `../trade_mobile` (app Expo pour iPhone, Android
+et le web) la consomme.
+
+### Organisation
+
+Même découpage que le back Node de Sign : chaque requête traverse
+route → middlewares → controller → service → modèle.
+
+```
+api/
+  main.py          Application : middlewares, erreurs, /health, routes
+  config/          settings (variables d'environnement), security
+                     (limites de débit, CORS), db (session SQLAlchemy)
+  routes/          Déclaration des routes, sous /trade/v1
+  controllers/     Lecture de la requête, mise en forme de la réponse
+  services/        Logique métier (auth, jetons, compte, marché,
+                     assistant, portefeuille, paiement, admin) ;
+                     engine/ : cœur d'analyse et modèle ML
+  training/        Entraînement et backtests (CLI)
+  models/          Tables SQLAlchemy (un fichier par table)
+  validations/     Corps de requête attendus (Pydantic), un fichier
+                     par domaine (auth, account, market, portfolio, billing)
+  middlewares/     Authentification, clé admin, limites de débit,
+                     journal des requêtes, gestion centralisée des erreurs
+  errors/          AppError et ses sous-classes (400, 401, 403...)
+  utils/           Format des réponses, logger, format_user
+  migrations/      Migrations Alembic
+  jobs/            Tâches planifiées (cours du soir, purge des jetons)
+  scripts/         seed_dev (compte de démonstration local), list_users,
+                     grant_pro, reset_password
+```
+
+Toutes les réponses JSON ont la même forme :
+
+```json
+{ "success": true,  "message": "Connexion réussie", "data": { ... } }
+{ "success": false, "message": "Données invalides", "details": ["email : ..."] }
+```
+
+### Routes (préfixe `/trade/v1`)
+
+| Route | Rôle |
+|---|---|
+| `POST /auth/register`, `POST /auth/login` | Création de compte, connexion : `token` (accès, 60 min) + `refresh_token` (30 j) |
+| `POST /auth/refresh` | Nouvelle paire de jetons ; l'ancien `refresh_token` est révoqué (réutilisé → toutes les sessions fermées) |
+| `POST /auth/logout`, `PUT /auth/password` | Déconnexion d'un appareil, changement de mot de passe (ferme les autres sessions) |
+| `GET/DELETE /account/me`, `GET/PUT /account/preferences` | Profil, suppression du compte, réglages d'analyse |
+| `GET /market`, `GET /structures`, `GET /structures/{symbol}/analysis` | Vue du marché, liste des titres, analyse détaillée |
+| `POST /structures/{symbol}/assistant` | Question à l'assistant (quota quotidien selon l'offre) |
+| `GET /portfolio`, `POST /portfolio/positions`, `DELETE /portfolio/positions/{id}` | Portefeuille |
+| `GET /billing/offer`, `POST /billing/checkout`, `POST /billing/confirm` | Offre Pro et paiement PayDunya |
+| `GET /billing/return`, `POST /billing/ipn` | Retour du client et notification PayDunya |
+| `POST /admin/structures`, `/admin/refresh`, `/admin/retrain` | Import d'historique, cours du jour, réentraînement (en-tête `X-Admin-Key`) |
+
+`GET /health` (hors préfixe) vérifie aussi la base.
+
+### En local
+
+```bash
+python -m alembic upgrade head
+python -m api.scripts.seed_dev
+python -m uvicorn api.main:app --reload
+```
+
+SQLite par défaut (`data/saas.db`), documentation sur
+http://127.0.0.1:8000/docs. Pour une base créée avant les migrations :
+`python -m alembic stamp 0001 && python -m alembic upgrade head`.
+Avec PostgreSQL : `docker compose up --build`.
+
+Après un changement de modèle (`api/models/`), générer la migration :
+`python -m alembic revision --autogenerate -m "description"` ; le test
+`test_migrations_match_models` échoue tant qu'elle manque.
+
+### Production (VPS)
+
+Toutes les variables sont listées dans [.env.example](.env.example). Avec
+`ENV=production`, l'API refuse de démarrer sans `JWT_SECRET` et
+`JWT_REFRESH_SECRET` distincts, sans PostgreSQL, ou avec `CORS_ORIGINS=*`.
+
+1. Sur un VPS Ubuntu neuf : `sudo bash deploy/setup-server.sh --domain api.exemple.com`
+   (Docker, Nginx, pare-feu, certificat Let's Encrypt).
+2. `git clone` dans `/var/www/trade-api`, `cp .env.example .env`, remplir.
+3. `docker compose -f docker-compose.prod.yml up -d --build` : PostgreSQL
+   et l'API (migrations appliquées au démarrage), publiée sur
+   `127.0.0.1:8000` derrière Nginx.
+4. `crontab deploy/crontab` : cours du soir et réentraînement (lundi-vendredi
+   18 h 30 UTC), purge des jetons expirés, sauvegarde quotidienne de la base
+   et des données (`deploy/backup-postgres.sh`, copie Google Drive si rclone
+   est configuré).
+5. Importer les historiques puis entraîner le modèle :
+   ```bash
+   curl -X POST "https://api.exemple.com/trade/v1/admin/structures?name=PALM%20CI" \
+        -H "X-Admin-Key: $ADMIN_API_KEY" --data-binary @PALM_CI.xlsx
+   curl -X POST "https://api.exemple.com/trade/v1/admin/retrain" -H "X-Admin-Key: $ADMIN_API_KEY"
+   ```
+
+Ensuite, chaque push sur `main` dont la CI passe est déployé par
+`.github/workflows/deploy.yml` (secrets `VPS_HOST`, `VPS_USER`,
+`VPS_SSH_KEY`) ; `bash deploy/deploy.sh` fait la même chose à la main.
+
+- **Paiement** : offre Pro payée par PayDunya (`api/services/paydunya.py`).
+  Renseigner les clés `PAYDUNYA_*` (mode `test` d'abord) ; chaque paiement
+  prolonge l'offre de `PRO_DAYS` jours.
+- **Cours** : import d'un classeur par `POST /admin/structures`, ou flux
+  quotidien d'un fournisseur (`QUOTES_FEED_URL`, `api/services/quotes_feed.py`).
+- **App** : la version web et les builds iPhone/Android sont dans
+  `../trade_mobile` (`eas.json`).

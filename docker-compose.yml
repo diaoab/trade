@@ -1,0 +1,73 @@
+# ============================================================
+#  Trade API — Docker Compose DEVELOPPEMENT
+#  Usage : docker compose up --build
+#  Pour la production : docker compose -f docker-compose.prod.yml up -d
+#
+#  Sans Docker, l'API tourne aussi sur SQLite :
+#    python -m alembic upgrade head && python -m uvicorn api.main:app --reload
+# ============================================================
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: trade_postgres_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-tradeapp}
+      POSTGRES_USER:     ${DB_USER:-tradeuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-tradepassword}
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    # En dev uniquement : port expose pour pgAdmin / DBeaver
+    ports:
+      - "5432:5432"
+    networks:
+      - trade_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-tradeuser} -d ${DB_NAME:-tradeapp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Backend FastAPI ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trade_backend_dev
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      ENV:         development
+      PORT:        8000
+      DB_HOST:     postgres
+      DB_PORT:     5432
+      DB_NAME:     ${DB_NAME:-tradeapp}
+      DB_USER:     ${DB_USER:-tradeuser}
+      DB_PASSWORD: ${DB_PASSWORD:-tradepassword}
+      LOG_DIR:     /app/logs
+      # Historiques et modele du poste de developpement
+      DATA_DIR:    /var/data/data
+      MODEL_DIR:   /var/data/models
+      RESULT_DIR:  /var/data/results
+    volumes:
+      - ./data:/var/data/data
+      - ./models:/var/data/models
+      - ./results:/var/data/results
+      - ./logs:/app/logs
+    networks:
+      - trade_network
+
+networks:
+  trade_network:
+    driver: bridge
+
+volumes:
+  postgres_data_dev:

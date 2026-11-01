@@ -1,9 +1,9 @@
-"""Tests de la construction de la cible (services/targets.py)."""
+"""Tests de la construction de la cible (api/services/engine/targets.py)."""
 
 import numpy as np
 import pandas as pd
 
-from services.targets import (
+from api.services.engine.targets import (
     compute_future_return,
     fit_tercile_thresholds,
     label_tercile

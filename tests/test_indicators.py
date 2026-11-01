@@ -1,4 +1,4 @@
-"""Tests des indicateurs techniques (services/indicators.py).
+"""Tests des indicateurs techniques (api/services/engine/indicators.py).
 
 Verifient les proprietes mathematiques attendues (bornes, coherence entre
 colonnes derivees) plutot que des valeurs exactes recalculees a la main.
@@ -7,7 +7,7 @@ colonnes derivees) plutot que des valeurs exactes recalculees a la main.
 import numpy as np
 import pandas as pd
 
-from services.indicators import calculate_indicators, calibrate_extremes
+from api.services.engine.indicators import calculate_indicators, calibrate_extremes
 
 
 def _make_close_series(n=80, seed=0):

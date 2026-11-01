@@ -1,10 +1,10 @@
-"""Tests du chargement/normalisation des historiques (services/market_data.py)."""
+"""Tests du chargement/normalisation des historiques (api/services/engine/market_data.py)."""
 
 import pandas as pd
 import pytest
 
-from services import market_data
-from services.market_data import (
+from api.services.engine import market_data
+from api.services.engine.market_data import (
     _count_inversions,
     _swap_day_month,
     _to_numeric,

@@ -1,0 +1,16 @@
+# ============================================================
+#  Trade API — Taches planifiees du VPS (heure du serveur = UTC)
+#  Installer : crontab deploy/crontab   (en tant que l'utilisateur applicatif)
+# ============================================================
+SHELL=/bin/bash
+APP_DIR=/var/www/trade-api
+
+# Chaque soir de seance, apres la cloture de la BRVM : cours du jour puis
+# reentrainement du modele.
+30 18 * * 1-5 cd $APP_DIR && docker compose -f docker-compose.prod.yml exec -T backend python -m api.jobs.refresh_market --retrain >> $APP_DIR/backups/cron.log 2>&1
+
+# Chaque nuit : purge des jetons de rafraichissement expires.
+0 3 * * * cd $APP_DIR && docker compose -f docker-compose.prod.yml exec -T backend python -m api.jobs.cleanup_expired_tokens >> $APP_DIR/backups/cron.log 2>&1
+
+# Chaque nuit : sauvegarde de la base et des donnees de marche.
+0 2 * * * bash $APP_DIR/deploy/backup-postgres.sh >> $APP_DIR/backups/backup.log 2>&1

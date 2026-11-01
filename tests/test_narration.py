@@ -1,8 +1,8 @@
-"""Tests du resume lu par l'assistant vocal (services/narration.py)."""
+"""Tests du resume lu par l'assistant vocal (api/services/engine/narration.py)."""
 
 import pandas as pd
 
-from services.narration import build_narration
+from api.services.engine.narration import build_narration
 
 
 RESULT = {

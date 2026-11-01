@@ -8,8 +8,8 @@ jobs:
   test:
     # Les deux bouts de ce qui est reellement utilise : le poste de
     # developpement (macOS, Python 3.9) et la cible la plus recente
-    # (Windows, Python 3.14). Une API Streamlit absente de l'une des deux
-    # versions installees fait echouer tests/test_app_smoke.py.
+    # (Windows, Python 3.14). Le serveur tourne en Python 3.12 (Dockerfile).
+    # Un succes sur main declenche le deploiement (deploy.yml).
     strategy:
       fail-fast: false
       matrix:
@@ -18,6 +18,9 @@ jobs:
             python-version: "3.9"
           - os: windows-latest
             python-version: "3.14"
+          # Version et systeme de l'image de production (Dockerfile).
+          - os: ubuntu-latest
+            python-version: "3.12"
 
     runs-on: ${{ matrix.os }}
 

@@ -1,11 +1,11 @@
-"""Tests du calendrier BRVM (services/trading_calendar.py)."""
+"""Tests du calendrier BRVM (api/services/engine/trading_calendar.py)."""
 
 import datetime
 
 import pandas as pd
 
-from services import trading_calendar
-from services.trading_calendar import (
+from api.services.engine import trading_calendar
+from api.services.engine.trading_calendar import (
     computed_holidays,
     easter_sunday,
     previous_trading_day
