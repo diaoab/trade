@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import JSON, DateTime, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, false, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from api.models.base import Base, aware, utcnow
@@ -16,6 +16,22 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
 
     password_hash: Mapped[str] = mapped_column(String(255))
+
+    # Identite facultative : l'inscription ne demande que l'e-mail, le
+    # back-office peut completer.
+    first_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    last_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    phone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+
+    # Un compte desactive par le back-office ne se connecte plus et ses
+    # jetons d'acces sont refuses ; ses donnees sont conservees.
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+
+    # Mot de passe provisoire (admin cree depuis le back-office) : a changer
+    # avant d'acceder au back-office.
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
     # Offre attribuee a la main ("free" ou "pro"), par exemple pour un
     # compte offert. L'offre payee passe par pro_until (cf. effective_plan).

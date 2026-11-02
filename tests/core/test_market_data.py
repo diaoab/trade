@@ -269,3 +269,60 @@ def test_reimporting_a_structure_completes_its_history(tmp_path, monkeypatch):
 
     # Les dividendes saisis survivent a la mise a jour.
     assert len(market_data.get_structures()[symbol]["dividends"]) == 1
+
+
+# =========================================================
+# COPIE PARQUET DES CLASSEURS
+# =========================================================
+
+def test_read_workbook_reuses_its_parquet_copy(tmp_path, monkeypatch):
+
+    path = tmp_path / "TEST.xlsx"
+
+    original = pd.DataFrame({
+        "Date": pd.bdate_range("2025-01-01", periods=5),
+        "Close": [1000.0, 1010.0, 1005.0, 1020.0, 1015.0]
+    })
+
+    original.to_excel(path, index=False)
+
+    first = market_data.read_workbook(path)
+
+    copies = list((tmp_path / ".cache").glob("TEST-*.parquet"))
+
+    assert len(copies) == 1
+
+    # Copie a jour : l'Excel n'est plus relu, et le contenu est identique.
+    def no_excel(*args, **kwargs):
+        raise AssertionError("classeur relu")
+
+    monkeypatch.setattr(market_data.pd, "read_excel", no_excel)
+
+    pd.testing.assert_frame_equal(market_data.read_workbook(path), first)
+
+    monkeypatch.undo()
+
+    # Classeur modifie : nouvelle copie, l'ancienne est supprimee.
+    original.assign(Close=original["Close"] * 2).to_excel(path, index=False)
+
+    assert market_data.read_workbook(path)["Close"].iloc[0] == 2000.0
+
+    updated = list((tmp_path / ".cache").glob("TEST-*.parquet"))
+
+    assert len(updated) == 1 and updated != copies
+
+
+def test_read_workbook_still_reads_when_the_copy_fails(tmp_path, monkeypatch):
+
+    path = tmp_path / "TEST.xlsx"
+
+    pd.DataFrame({"Date": ["2025-01-01"], "Close": [1000.0]}).to_excel(path, index=False)
+
+    def failing(self, *args, **kwargs):
+        raise TypeError("types melanges")
+
+    monkeypatch.setattr(pd.DataFrame, "to_parquet", failing)
+
+    assert market_data.read_workbook(path)["Close"].iloc[0] == 1000.0
+
+    assert list((tmp_path / ".cache").glob("*")) == []

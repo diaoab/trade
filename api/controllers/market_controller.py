@@ -1,4 +1,5 @@
-from fastapi import Depends
+from fastapi import Depends, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from core.engine import market_data
@@ -9,7 +10,7 @@ from api.middlewares.auth import current_user
 from api.models import User
 from api.services import assistant_service, market_service
 from api.services.portfolio_service import require_structure
-from api.utils.response import ok
+from api.utils.response import ok, revalidated
 from api.validations.market_validation import ChatIn
 
 
@@ -21,20 +22,30 @@ def structures(user: User = Depends(current_user)):
     ])
 
 
-def overview(user: User = Depends(current_user)):
-    return ok(market_service.market_overview(user.preferences))
+def overview(request: Request, user: User = Depends(current_user)):
+
+    key = market_service.result_key("market", user.preferences)
+
+    return revalidated(
+        request,
+        key,
+        lambda: market_service.market_overview(user.preferences, key)
+    )
 
 
-def analysis(symbol: str, user: User = Depends(current_user)):
+def analysis(symbol: str, request: Request, user: User = Depends(current_user)):
 
     require_structure(symbol)
 
-    try:
-        result = market_service.analyse_structure(symbol, user.preferences)
-    except ValueError as error:
-        raise ValidationError(str(error))
+    key = market_service.result_key("analysis", user.preferences, symbol)
 
-    return ok(result)
+    def compute():
+        try:
+            return market_service.analyse_structure(symbol, user.preferences, key)
+        except ValueError as error:
+            raise ValidationError(str(error))
+
+    return revalidated(request, key, compute)
 
 
 def assistant(
@@ -54,3 +65,31 @@ def assistant(
     )
 
     return ok(answer)
+
+
+def assistant_stream(
+    symbol: str,
+    body: ChatIn,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db)
+):
+    """Meme demande que assistant, reponse en Server-Sent Events."""
+
+    require_structure(symbol)
+
+    events = assistant_service.ask_stream(
+        db,
+        user,
+        symbol,
+        [message.model_dump() for message in body.messages]
+    )
+
+    return StreamingResponse(
+        events,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            # Nginx : transmettre chaque morceau tout de suite.
+            "X-Accel-Buffering": "no"
+        }
+    )

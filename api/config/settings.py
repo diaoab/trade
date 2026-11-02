@@ -152,6 +152,23 @@ PRO_PRICE_XOF = int(os.environ.get("PRO_PRICE_XOF", "5000"))
 PRO_DAYS = int(os.environ.get("PRO_DAYS", "30"))
 
 # =========================================================
+# E-MAILS
+# =========================================================
+# Envoi par Resend (codes "mot de passe oublie"). Sans RESEND_API_KEY, rien
+# n'est envoye : en developpement, le contenu est ecrit dans les logs.
+
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+
+# Expediteur sur un domaine verifie dans Resend (onboarding@resend.dev
+# convient pour essayer, vers l'adresse du compte Resend seulement).
+MAIL_FROM = os.environ.get("MAIL_FROM", "onboarding@resend.dev")
+MAIL_FROM_NAME = os.environ.get("MAIL_FROM_NAME", "Financial AI Advisor")
+
+# Validite d'un code de reinitialisation, et essais permis.
+RESET_CODE_MINUTES = int(os.environ.get("RESET_CODE_MINUTES", "15"))
+RESET_CODE_MAX_ATTEMPTS = int(os.environ.get("RESET_CODE_MAX_ATTEMPTS", "5"))
+
+# =========================================================
 # ADMINISTRATION
 # =========================================================
 
@@ -186,6 +203,9 @@ def _validate_production():
 
 if IS_PROD:
     _validate_production()
+
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY non defini : les codes « mot de passe oublié » ne partiront pas.")
 elif JWT_SECRET == DEV_SECRET:
     logger.warning(
         "JWT_SECRET non defini : secret de developpement utilise. "

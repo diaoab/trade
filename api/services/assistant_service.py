@@ -1,5 +1,6 @@
 """Assistant conversationnel sur l'analyse d'un titre (API Claude)."""
 
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy import update
@@ -10,6 +11,7 @@ from core.engine.assistant_chat import AssistantUnavailable, build_context, stre
 from api.errors.app_error import ServiceUnavailableError, TooManyRequestsError, ValidationError
 from api.models import AssistantUsage
 from api.services import account_service, market_service
+from api.utils.logger import logger
 
 
 # Garde-fous sur la conversation envoyee par l'app : le cout d'un appel a
@@ -38,9 +40,9 @@ def _clean_history(messages):
     return messages
 
 
-def ask(db, user, symbol, messages):
-    """Repond a la derniere question de `messages` ; l'app garde la
-    conversation et la renvoie a chaque question (texte seul)."""
+def _prepare(db, user, symbol, messages):
+    """Controles et decompte communs aux deux routes : conversation, contexte
+    de l'analyse, question reservee sur le quota du jour."""
 
     history = _clean_history(messages)
 
@@ -63,6 +65,15 @@ def ask(db, user, symbol, messages):
     # depasser la limite (chaque appel a l'API Claude est facture).
     day = _reserve(db, user)
 
+    return context, history, day
+
+
+def ask(db, user, symbol, messages):
+    """Repond a la derniere question de `messages` ; l'app garde la
+    conversation et la renvoie a chaque question (texte seul)."""
+
+    context, history, day = _prepare(db, user, symbol, messages)
+
     try:
         answer = "".join(stream_answer(context, history))
     except Exception as error:
@@ -72,6 +83,48 @@ def ask(db, user, symbol, messages):
         raise
 
     return {"answer": answer, "assistant": account_service.assistant_quota(db, user)}
+
+
+def _event(name, data):
+    """Un evenement Server-Sent Events."""
+
+    return f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def ask_stream(db, user, symbol, messages):
+    """Comme ask, mais la reponse part morceau par morceau (Server-Sent
+    Events) : l'app affiche le texte pendant qu'il s'ecrit.
+
+    Les erreurs de la demande (conversation invalide, quota atteint) sont
+    levees ici, avant le flux, et partent en reponse JSON habituelle. Le
+    generateur rendu emet ensuite :
+      event: delta  data: {"text": "..."}       (autant que necessaire)
+      event: done   data: {"assistant": quota}
+      event: error  data: {"message": "..."}    (a la place de done)
+    """
+
+    context, history, day = _prepare(db, user, symbol, messages)
+
+    def events():
+
+        try:
+            for text in stream_answer(context, history):
+                yield _event("delta", {"text": text})
+
+        except AssistantUnavailable as error:
+            _release(db, user, day)
+            yield _event("error", {"message": str(error)})
+            return
+
+        except Exception:
+            _release(db, user, day)
+            logger.exception("Assistant : echec pendant la reponse en flux")
+            yield _event("error", {"message": "L'assistant n'a pas pu répondre. Réessaie."})
+            return
+
+        yield _event("done", {"assistant": account_service.assistant_quota(db, user)})
+
+    return events()
 
 
 def _reserve(db, user):

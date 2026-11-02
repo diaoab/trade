@@ -8,7 +8,7 @@ from core.constants import INDICATOR_OPTIONS
 
 from api.config.settings import ASSISTANT_DAILY_LIMITS
 from api.errors.app_error import ValidationError
-from api.models import AssistantUsage, Payment, RefreshToken
+from api.models import AssistantUsage, PasswordResetCode, Payment, RefreshToken
 from api.services import market_service
 
 
@@ -38,10 +38,32 @@ def delete_account(db, user):
     """Suppression du compte et de toutes ses donnees (exigee par l'App
     Store et le Play Store pour toute app qui permet d'en creer un)."""
 
-    for table in (AssistantUsage, Payment, RefreshToken):
+    for table in (AssistantUsage, Payment, RefreshToken, PasswordResetCode):
         db.query(table).filter(table.user_id == user.id).delete()
 
     db.delete(user)
+    db.commit()
+
+
+def clean_text(value):
+    """Texte saisi (profil, back-office) : espaces retires, vide = None."""
+
+    value = (value or "").strip()
+
+    return value or None
+
+
+PROFILE_FIELDS = ("first_name", "last_name", "phone")
+
+
+def update_profile(db, user, changes):
+    """changes : champs envoyes (un champ absent n'est pas touche, null
+    l'efface)."""
+
+    for field in PROFILE_FIELDS:
+        if field in changes:
+            setattr(user, field, clean_text(changes[field]))
+
     db.commit()
 
 

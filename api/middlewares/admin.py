@@ -42,6 +42,14 @@ def require_admin(
         user = current_user(credentials, db)
 
         if user.is_admin:
+
+            # Admin cree avec un mot de passe provisoire : il le change
+            # (PUT /auth/password) avant tout acces au back-office.
+            if user.must_change_password:
+                raise ForbiddenError(
+                    "Change ton mot de passe provisoire avant d'accéder au back-office."
+                )
+
             return user
 
     raise ForbiddenError("Accès réservé à l'administration.")

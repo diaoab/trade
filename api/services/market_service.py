@@ -6,6 +6,10 @@ et non de st.session_state. Le cache est invalide quand le classeur ou le
 registre des structures change sur disque.
 """
 
+import hashlib
+import json
+import threading
+from collections import OrderedDict
 from functools import lru_cache
 
 import numpy as np
@@ -18,7 +22,7 @@ from core.constants import (
     INDICATOR_DEFAULTS,
     INDICATOR_OPTIONS
 )
-from core.engine import market_data
+from core.engine import market_data, predictor
 from core.engine.analysis import (
     analyse_session,
     latest_sessions,
@@ -145,9 +149,127 @@ def _quote(prepared):
     }
 
 
-def market_overview(preferences):
+# =========================================================
+# CACHE DES RESULTATS
+# =========================================================
+# Les cours ne changent qu'a l'import du soir : le resultat d'une analyse
+# est le meme pour tous les comptes aux memes reglages, jusqu'a ce qu'un
+# classeur, le registre ou le modele change sur disque.
+
+RESULT_CACHE_SIZE = 256
+
+
+def _file_stamp(path):
+
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+
+    return (stat.st_mtime_ns, stat.st_size)
+
+
+def data_version():
+    """Empreinte de tout ce dont dependent les analyses : classeurs,
+    registre des structures, modele. Change des qu'un fichier change."""
+
+    parts = [
+        (symbol, str(structure["path"]), _file_stamp(structure["path"]))
+        for symbol, structure in sorted(market_data.get_structures().items())
+    ]
+
+    parts += [
+        _file_stamp(path)
+        for path in (
+            market_data.REGISTRY_PATH,
+            predictor.MODEL_PATH,
+            predictor.FEATURES_PATH,
+            predictor.MODEL_METADATA_PATH,
+            predictor.PROBA_REFERENCE_PATH
+        )
+    ]
+
+    return hashlib.sha1(repr(parts).encode("utf-8")).hexdigest()[:16]
+
+
+def result_key(kind, preferences, symbol=""):
+    """Cle d'un resultat : sert au cache et d'ETag a l'API (meme cle =
+    meme reponse)."""
+
+    settings = json.dumps(user_settings(preferences), sort_keys=True)
+
+    raw = f"{kind}|{symbol}|{settings}|{data_version()}"
+
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:24]
+
+
+class _ResultCache:
+    """LRU partage entre les requetes. Une seule requete calcule une cle
+    donnee ; les autres attendent son resultat au lieu de refaire le meme
+    calcul (cas du premier /market apres l'import du soir)."""
+
+    def __init__(self, size):
+
+        self.size = size
+        self._items = OrderedDict()
+        self._lock = threading.Lock()
+        self._computing = {}
+
+    def get_or_compute(self, key, compute):
+
+        with self._lock:
+
+            if key in self._items:
+                self._items.move_to_end(key)
+                return self._items[key]
+
+            key_lock = self._computing.setdefault(key, threading.Lock())
+
+        with key_lock:
+
+            with self._lock:
+                if key in self._items:
+                    return self._items[key]
+
+            try:
+                value = compute()
+            except Exception:
+                with self._lock:
+                    self._computing.pop(key, None)
+                raise
+
+            with self._lock:
+
+                self._items[key] = value
+
+                while len(self._items) > self.size:
+                    self._items.popitem(last=False)
+
+                self._computing.pop(key, None)
+
+        return value
+
+    def clear(self):
+
+        with self._lock:
+            self._items.clear()
+
+
+results_cache = _ResultCache(RESULT_CACHE_SIZE)
+
+
+def market_overview(preferences, key=None):
     """Derniere seance de chaque titre, avec le signal du moteur (cf.
-    ui.loaders.market_overview, version Streamlit)."""
+    ui.loaders.market_overview, version Streamlit). Mis en cache ; key :
+    result_key("market", preferences), si l'appelant l'a deja calculee."""
+
+    return results_cache.get_or_compute(
+        key or result_key("market", preferences),
+        lambda: _market_overview(preferences)
+    )
+
+
+def _market_overview(preferences):
 
     settings = user_settings(preferences)
 
@@ -270,9 +392,19 @@ def analyse_raw(symbol, preferences):
     }
 
 
-def analyse_structure(symbol, preferences):
+def analyse_structure(symbol, preferences, key=None):
     """Analyse complete de la derniere seance d'un titre, pour l'ecran
-    Analyse : signal, detail des scores, raisons, graphique, resume lu."""
+    Analyse : signal, detail des scores, raisons, graphique, resume lu.
+    Mis en cache comme market_overview (une ValueError, titre sans analyse
+    possible, ne l'est pas)."""
+
+    return results_cache.get_or_compute(
+        key or result_key("analysis", preferences, symbol),
+        lambda: _analyse_structure(symbol, preferences)
+    )
+
+
+def _analyse_structure(symbol, preferences):
 
     raw = analyse_raw(symbol, preferences)
 

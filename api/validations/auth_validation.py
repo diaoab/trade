@@ -21,3 +21,18 @@ class RefreshIn(BaseModel):
 class ChangePasswordIn(BaseModel):
     current_password: str = Field(max_length=128)
     new_password: str = Field(max_length=128)
+
+
+class ForgotPasswordIn(BaseModel):
+    email: str = Field(max_length=255)
+
+
+class VerifyResetCodeIn(BaseModel):
+    email: str = Field(max_length=255)
+    code: str = Field(max_length=10)
+
+
+class ResetPasswordIn(BaseModel):
+    email: str = Field(max_length=255)
+    code: str = Field(max_length=10)
+    new_password: str = Field(max_length=128)

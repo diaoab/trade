@@ -8,6 +8,7 @@ soit lu exactement de la meme facon des deux cotes.
 import datetime
 import json
 import logging
+import os
 import re
 import unicodedata
 
@@ -621,6 +622,62 @@ def adjust_for_dividends(df, dividends):
     return adjusted, applied
 
 
+# =========================================================
+# COPIE PARQUET DES CLASSEURS
+# =========================================================
+# Le classeur Excel reste la source (import, edition a la main). Sa lecture
+# par openpyxl est lente : une copie Parquet, relue en quelques
+# millisecondes, est tenue a jour dans data/.cache. Son nom porte la date
+# de modification et la taille du classeur : un classeur modifie, remplace
+# ou restaure donne une autre copie, jamais une copie perimee.
+
+CACHE_DIRNAME = ".cache"
+
+
+def _parquet_copy(path):
+
+    stat = path.stat()
+
+    return path.parent / CACHE_DIRNAME / f"{path.stem}-{stat.st_mtime_ns}-{stat.st_size}.parquet"
+
+
+def read_workbook(path):
+    """Contenu brut du classeur `path` (comme pd.read_excel), lu dans sa
+    copie Parquet quand elle est a jour, et cree celle-ci sinon."""
+
+    copy = _parquet_copy(path)
+
+    try:
+        return pd.read_parquet(copy)
+    except (OSError, ValueError):
+        pass
+
+    df = pd.read_excel(path)
+
+    partial = copy.with_name(f"{copy.name}.{os.getpid()}.tmp")
+
+    try:
+
+        copy.parent.mkdir(exist_ok=True)
+
+        # Ecriture puis renommage : un autre processus (tache du soir, API)
+        # ne lit jamais une copie a moitie ecrite.
+        df.to_parquet(partial, index=False)
+        os.replace(partial, copy)
+
+        for old in copy.parent.glob(f"{path.stem}-*.parquet"):
+            if old != copy:
+                old.unlink(missing_ok=True)
+
+    except Exception as error:
+        # Colonne de types melanges, dossier en lecture seule... : le
+        # classeur reste lisible, seulement plus lentement.
+        logger.warning("Copie Parquet de %s impossible : %s", path.name, error)
+        partial.unlink(missing_ok=True)
+
+    return df
+
+
 def load_structure(symbol, with_report=False, adjust_dividends=True):
     """Charge l'historique d'un titre, normalise et trie chronologiquement.
 
@@ -640,7 +697,7 @@ def load_structure(symbol, with_report=False, adjust_dividends=True):
     path = structures[symbol]["path"]
 
     df, report = prepare_dataframe(
-        pd.read_excel(path)
+        read_workbook(path)
     )
 
     report["symbol"] = symbol
@@ -752,7 +809,7 @@ def save_uploaded_structure(uploaded_file, name):
         # annees deja en base. Sur une seance presente des deux cotes, le
         # nouveau fichier l'emporte (cours corrige par le fournisseur).
         existing, _ = prepare_dataframe(
-            pd.read_excel(path)
+            read_workbook(path)
         )
 
         if "Date" in existing.columns:

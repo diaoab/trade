@@ -7,11 +7,22 @@ from api.models import User
 from api.services import account_service
 from api.utils.format_user import format_user
 from api.utils.response import ok
-from api.validations.account_validation import PreferencesIn
+from api.validations.account_validation import PreferencesIn, ProfileIn
 
 
 def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
     return ok(format_user(db, user), "Profil récupéré")
+
+
+def update_profile(
+    body: ProfileIn,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db)
+):
+
+    account_service.update_profile(db, user, body.model_dump(exclude_unset=True))
+
+    return ok(format_user(db, user), "Profil mis à jour")
 
 
 def delete_account(user: User = Depends(current_user), db: Session = Depends(get_db)):

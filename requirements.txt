@@ -5,6 +5,8 @@
 pandas>=2.2
 numpy>=2.0
 openpyxl>=3.1
+# Copie Parquet des classeurs, bien plus rapide a relire que l'Excel.
+pyarrow>=17.0
 joblib>=1.4
 scikit-learn>=1.6
 # Sur macOS, xgboost a besoin d'OpenMP : brew install libomp

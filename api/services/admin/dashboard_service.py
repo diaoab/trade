@@ -41,6 +41,7 @@ def stats(db):
             "total": _count(db),
             "pro": _count(db, or_(User.plan == "pro", User.pro_until > now)),
             "admins": _count(db, User.role == "admin"),
+            "inactive": _count(db, User.is_active.is_(False)),
             "new_7d": _count(db, User.created_at >= week),
             "new_30d": len(signup_dates),
             "active_7d": _count(db, User.last_login_at >= week)

@@ -18,6 +18,8 @@ results/*.csv
 # Donnees et fichiers verrous Excel
 ~$*.xlsx
 data/*.xlsx
+# Copies Parquet des classeurs (core.engine.market_data.read_workbook)
+data/.cache/
 data/_archive/
 
 # Reglages utilisateur (palette, indicateurs, poids) : etat local a la

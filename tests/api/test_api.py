@@ -3,6 +3,8 @@ memoire et un historique synthetique : rien n'est lu ni ecrit dans le vrai
 projet."""
 
 import hashlib
+import json
+import os
 
 import numpy as np
 import pandas as pd
@@ -17,7 +19,7 @@ from api.config import settings
 from api.config.db import get_db
 from api.middlewares import rate_limit
 from api.models import Base
-from api.services import assistant_service, paydunya, quotes_feed
+from api.services import assistant_service, market_service, paydunya, quotes_feed
 from core.engine import market_data
 
 
@@ -313,6 +315,65 @@ def test_market_and_analysis(client):
     ).status_code == 404
 
 
+def test_market_is_revalidated_with_etag(client, tmp_path):
+
+    headers = _signup(client)
+
+    first = client.get(f"{V1}/market", headers=headers)
+
+    etag = first.headers["etag"]
+
+    assert etag.startswith('W/"')
+
+    # Meme version : 304 sans corps.
+    again = client.get(f"{V1}/market", headers={**headers, "If-None-Match": etag})
+
+    assert again.status_code == 304
+    assert again.content == b""
+
+    analysis = client.get(f"{V1}/structures/TEST/analysis", headers=headers)
+
+    assert client.get(
+        f"{V1}/structures/TEST/analysis",
+        headers={**headers, "If-None-Match": analysis.headers["etag"]}
+    ).status_code == 304
+
+    # D'autres reglages ou de nouveaux cours changent la version.
+    client.put(f"{V1}/account/preferences", json={"selected_parameters": ["RSI"]}, headers=headers)
+
+    changed = client.get(f"{V1}/market", headers={**headers, "If-None-Match": etag})
+
+    assert changed.status_code == 200
+    assert changed.headers["etag"] != etag
+
+    etag = changed.headers["etag"]
+
+    workbook = tmp_path / "TEST.xlsx"
+    workbook.write_bytes(workbook.read_bytes())
+    os.utime(workbook, ns=(1, 1))
+
+    assert client.get(f"{V1}/market", headers={**headers, "If-None-Match": etag}).status_code == 200
+
+
+def test_market_is_computed_once_for_same_settings(client, monkeypatch):
+
+    calls = []
+
+    original = market_service._market_overview
+
+    def counting(preferences):
+        calls.append(preferences)
+        return original(preferences)
+
+    monkeypatch.setattr(market_service, "_market_overview", counting)
+
+    for email in ("a@example.com", "b@example.com"):
+        assert client.get(f"{V1}/market", headers=_signup(client, email)).status_code == 200
+
+    # Deux comptes aux reglages par defaut : un seul calcul.
+    assert len(calls) == 1
+
+
 def test_portfolio_is_private_to_each_user(client):
 
     alice = _signup(client, "alice@example.com")
@@ -377,6 +438,73 @@ def test_assistant_quota(client, monkeypatch):
         headers=headers,
         json=question
     ).status_code == 429
+
+
+def _events(response):
+    """Evenements Server-Sent Events d'une reponse : [(nom, donnees)]."""
+
+    events = []
+
+    for block in response.text.strip().split("\n\n"):
+        lines = dict(line.split(": ", 1) for line in block.splitlines())
+        events.append((lines["event"], json.loads(lines["data"])))
+
+    return events
+
+
+def test_assistant_streams_the_answer(client, monkeypatch):
+
+    headers = _signup(client)
+
+    monkeypatch.setattr(
+        assistant_service,
+        "stream_answer",
+        lambda context, history: iter(["Réponse ", "simulée"])
+    )
+
+    monkeypatch.setitem(settings.ASSISTANT_DAILY_LIMITS, "free", 1)
+
+    question = {"messages": [{"role": "user", "content": "Pourquoi ?"}]}
+
+    response = client.post(f"{V1}/structures/TEST/assistant/stream", headers=headers, json=question)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+
+    assert _events(response) == [
+        ("delta", {"text": "Réponse "}),
+        ("delta", {"text": "simulée"}),
+        ("done", {"assistant": {"used": 1, "limit": 1}})
+    ]
+
+    # Quota atteint : refuse avant le flux, en JSON.
+    refused = client.post(f"{V1}/structures/TEST/assistant/stream", headers=headers, json=question)
+
+    assert refused.status_code == 429
+    assert refused.json()["success"] is False
+
+
+def test_assistant_stream_error_gives_the_question_back(client, monkeypatch):
+
+    from core.engine.assistant_chat import AssistantUnavailable
+
+    headers = _signup(client)
+
+    def failing(context, history):
+        yield "Début"
+        raise AssistantUnavailable("Service injoignable.")
+
+    monkeypatch.setattr(assistant_service, "stream_answer", failing)
+
+    question = {"messages": [{"role": "user", "content": "Pourquoi ?"}]}
+
+    events = _events(client.post(f"{V1}/structures/TEST/assistant/stream", headers=headers, json=question))
+
+    assert events[-1] == ("error", {"message": "Service injoignable."})
+
+    me = _data(client.get(f"{V1}/account/me", headers=headers))
+
+    assert me["assistant"]["used"] == 0
 
 
 # =========================================================
@@ -637,6 +765,280 @@ def test_account_actions_need_an_admin_account_not_the_key(client, monkeypatch):
         json={"plan": "pro"},
         headers={"X-Admin-Key": "secret-admin"}
     ).status_code == 403
+
+
+def test_admin_edits_identity(client):
+
+    headers = _admin(client)
+
+    user_id = _register(client, "awa@example.com")["user"]["id"]
+
+    updated = _data(client.patch(
+        f"{V1}/admin/users/{user_id}",
+        json={"first_name": " Awa ", "last_name": "Diop", "phone": "+221770000000"},
+        headers=headers
+    ))
+
+    assert (updated["first_name"], updated["last_name"]) == ("Awa", "Diop")
+    assert updated["plan"] == "free"
+
+    found = _data(client.get(f"{V1}/admin/users?search=diop", headers=headers))["items"]
+
+    assert [user["id"] for user in found] == [user_id]
+
+    # null efface, un champ absent reste.
+    cleared = _data(client.patch(f"{V1}/admin/users/{user_id}", json={"phone": None}, headers=headers))
+
+    assert cleared["phone"] is None
+    assert cleared["last_name"] == "Diop"
+
+
+def test_admin_deactivates_and_reactivates(client):
+
+    headers = _admin(client)
+
+    session = _register(client, "b@example.com")
+
+    user_id = session["user"]["id"]
+
+    user_headers = {"Authorization": f"Bearer {session['token']}"}
+
+    off = _data(client.post(f"{V1}/admin/users/{user_id}/deactivate", headers=headers))
+
+    assert off["is_active"] is False
+
+    # Jeton d'acces refuse, sessions fermees, connexion impossible.
+    assert client.get(f"{V1}/account/me", headers=user_headers).status_code == 403
+
+    assert client.post(
+        f"{V1}/auth/refresh",
+        json={"refresh_token": session["refresh_token"]}
+    ).status_code == 401
+
+    login = {"email": "b@example.com", "password": "motdepasse1"}
+
+    assert client.post(f"{V1}/auth/login", json=login).status_code == 403
+
+    assert client.post(
+        f"{V1}/auth/login",
+        json={**login, "password": "mauvais-mdp"}
+    ).status_code == 401
+
+    assert _data(client.get(f"{V1}/admin/users?status=inactive", headers=headers))["pagination"]["total"] == 1
+    assert _data(client.get(f"{V1}/admin/stats", headers=headers))["users"]["inactive"] == 1
+
+    assert _data(client.post(f"{V1}/admin/users/{user_id}/activate", headers=headers))["is_active"] is True
+
+    assert client.post(f"{V1}/auth/login", json=login).status_code == 200
+
+
+def test_admin_cannot_deactivate_or_delete_itself(client):
+
+    headers = _admin(client)
+
+    me = _data(client.get(f"{V1}/admin/users", headers=headers))["items"][0]
+
+    assert client.post(f"{V1}/admin/users/{me['id']}/deactivate", headers=headers).status_code == 422
+    assert client.delete(f"{V1}/admin/users/{me['id']}", headers=headers).status_code == 422
+
+
+def test_admin_deletes_user(client):
+
+    headers = _admin(client)
+
+    user_headers = _signup(client, "b@example.com")
+
+    user_id = _data(client.get(f"{V1}/account/me", headers=user_headers))["id"]
+
+    assert client.delete(f"{V1}/admin/users/{user_id}", headers=headers).status_code == 200
+
+    assert client.get(f"{V1}/admin/users/{user_id}", headers=headers).status_code == 404
+    assert client.delete(f"{V1}/admin/users/{user_id}", headers=headers).status_code == 404
+
+
+def test_admin_creates_admin_with_provisional_password(client):
+
+    headers = _admin(client)
+
+    body = {"email": " New@Example.com ", "password": "Provisoire1", "first_name": "Moussa"}
+
+    admin = _data(client.post(f"{V1}/admin/users/admins", json=body, headers=headers))
+
+    assert admin["email"] == "new@example.com"
+    assert admin["role"] == "admin"
+    assert admin["is_active"] is True
+    assert admin["must_change_password"] is True
+
+    assert client.post(f"{V1}/admin/users/admins", json=body, headers=headers).status_code == 409
+
+    # Mot de passe d'admin : majuscule et chiffre exiges.
+    assert client.post(
+        f"{V1}/admin/users/admins",
+        json={"email": "x@example.com", "password": "motdepasse1"},
+        headers=headers
+    ).status_code == 422
+
+    login = _data(client.post(f"{V1}/auth/login", json={"email": "new@example.com", "password": "Provisoire1"}))
+
+    assert login["user"]["must_change_password"] is True
+
+    new_headers = {"Authorization": f"Bearer {login['token']}"}
+
+    # Back-office ferme tant que le mot de passe provisoire n'est pas change.
+    assert client.get(f"{V1}/admin/stats", headers=new_headers).status_code == 403
+
+    changed = _data(client.put(
+        f"{V1}/auth/password",
+        json={"current_password": "Provisoire1", "new_password": "Personnel2"},
+        headers=new_headers
+    ))
+
+    assert client.get(
+        f"{V1}/admin/stats",
+        headers={"Authorization": f"Bearer {changed['token']}"}
+    ).status_code == 200
+
+
+def test_admin_exports_users_csv(client):
+
+    headers = _admin(client)
+
+    _signup(client, "b@example.com")
+
+    response = client.get(f"{V1}/admin/users/export?role=user", headers=headers)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+
+    lines = response.content.decode("utf-8-sig").splitlines()
+
+    assert lines[0].startswith("E-mail,Prénom,Nom")
+    assert len(lines) == 2
+    assert lines[1].startswith("b@example.com,")
+
+
+# =========================================================
+# MOT DE PASSE OUBLIE ET PROFIL
+# =========================================================
+
+@pytest.fixture
+def outbox(monkeypatch):
+    """E-mails envoyes, captures au lieu de partir chez Resend."""
+
+    from api.services import mailer
+
+    sent = []
+
+    monkeypatch.setattr(mailer, "send", lambda to, subject, body: sent.append({"to": to, "body": body}))
+
+    return sent
+
+
+def _code(mail):
+    import re
+
+    return re.search(r"\b(\d{6})\b", mail["body"]).group(1)
+
+
+def test_forgot_password_resets_with_emailed_code(client, outbox):
+
+    session = _register(client, "b@example.com")
+
+    response = client.post(f"{V1}/auth/forgot-password", json={"email": "B@example.com"})
+
+    assert response.status_code == 200
+    assert [mail["to"] for mail in outbox] == ["b@example.com"]
+
+    code = _code(outbox[0])
+
+    check = {"email": "b@example.com", "code": code}
+
+    assert client.post(f"{V1}/auth/verify-reset-code", json=check).status_code == 200
+
+    assert client.post(
+        f"{V1}/auth/reset-password",
+        json={**check, "new_password": "court"}
+    ).status_code == 422
+
+    assert client.post(
+        f"{V1}/auth/reset-password",
+        json={**check, "new_password": "nouveaumdp1"}
+    ).status_code == 200
+
+    # Code a usage unique, anciennes sessions fermees, nouveau mot de passe actif.
+    assert client.post(
+        f"{V1}/auth/reset-password",
+        json={**check, "new_password": "encoreun1"}
+    ).status_code == 400
+
+    assert client.post(
+        f"{V1}/auth/refresh",
+        json={"refresh_token": session["refresh_token"]}
+    ).status_code == 401
+
+    assert client.post(
+        f"{V1}/auth/login",
+        json={"email": "b@example.com", "password": "nouveaumdp1"}
+    ).status_code == 200
+
+
+def test_forgot_password_does_not_reveal_accounts(client, outbox):
+
+    unknown = client.post(f"{V1}/auth/forgot-password", json={"email": "inconnu@example.com"})
+
+    assert unknown.status_code == 200
+    assert outbox == []
+
+    assert client.post(
+        f"{V1}/auth/verify-reset-code",
+        json={"email": "inconnu@example.com", "code": "123456"}
+    ).status_code == 400
+
+
+def test_reset_code_attempts_are_limited(client, outbox, monkeypatch):
+
+    monkeypatch.setattr(settings, "RESET_CODE_MAX_ATTEMPTS", 2)
+
+    _register(client, "b@example.com")
+
+    client.post(f"{V1}/auth/forgot-password", json={"email": "b@example.com"})
+
+    code = _code(outbox[0])
+
+    wrong = "000000" if code != "000000" else "111111"
+
+    for _ in range(2):
+        assert client.post(
+            f"{V1}/auth/verify-reset-code",
+            json={"email": "b@example.com", "code": wrong}
+        ).status_code == 400
+
+    # Essais epuises : meme le bon code est refuse.
+    assert client.post(
+        f"{V1}/auth/verify-reset-code",
+        json={"email": "b@example.com", "code": code}
+    ).status_code == 400
+
+
+def test_user_updates_profile(client):
+
+    headers = _signup(client)
+
+    profile = _data(client.patch(
+        f"{V1}/account/me",
+        json={"first_name": "Awa", "last_name": " Diop ", "phone": ""},
+        headers=headers
+    ))
+
+    assert (profile["first_name"], profile["last_name"], profile["phone"]) == ("Awa", "Diop", None)
+
+    # Le role et l'offre ne passent pas par le profil.
+    profile = _data(client.patch(f"{V1}/account/me", json={"role": "admin", "plan": "pro"}, headers=headers))
+
+    assert profile["role"] == "user"
+    assert profile["plan"] == "free"
+    assert profile["first_name"] == "Awa"
 
 
 def test_admin_lists_payments(client):
