@@ -26,6 +26,8 @@ def _position_out(position, settings, structures):
         "buy_price": position.buy_price,
         "buy_date": position.buy_date.isoformat(),
         "last_close": None,
+        "last_date": None,
+        "awaiting_quote": False,
         "valuation": None
     }
 
@@ -47,6 +49,15 @@ def _position_out(position, settings, structures):
     last_date = prepared["Date"].iloc[-1]
 
     out["last_close"] = last_close
+
+    out["last_date"] = pd.Timestamp(last_date).strftime("%Y-%m-%d")
+
+    # Achat posterieur au dernier cours connu : aucun cours ne dit encore ce
+    # que vaut la position, la chiffrer au cours d'avant l'achat donnerait un
+    # resultat sans rapport avec la realite.
+    if pd.Timestamp(position.buy_date) > pd.Timestamp(last_date):
+        out["awaiting_quote"] = True
+        return out
 
     out["valuation"] = value_position(
         {
@@ -82,6 +93,15 @@ def portfolio(user):
     }
 
     totals["net_pct"] = totals["net"] / totals["cost"] * 100 if totals["cost"] else None
+
+    # Seance la plus ancienne parmi les cours utilises : la valorisation
+    # n'est pas plus recente que celle-ci.
+    dates = [p["last_date"] for p in positions if p["valuation"]]
+
+    totals["as_of"] = min(dates) if dates else None
+
+    # Positions achetees apres le dernier cours : exclues des totaux.
+    totals["awaiting_quote"] = sum(1 for p in positions if p["awaiting_quote"])
 
     return market_service.to_json({"positions": positions, "totals": totals})
 

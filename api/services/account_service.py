@@ -7,7 +7,7 @@ from sqlalchemy import select
 from core.constants import INDICATOR_OPTIONS
 
 from api.config.settings import ASSISTANT_DAILY_LIMITS
-from api.errors.app_error import ValidationError
+from api.errors.app_error import NotFoundError, ValidationError
 from api.models import AssistantUsage, PasswordResetCode, Payment, RefreshToken
 from api.services import market_service
 
@@ -91,3 +91,27 @@ def update_preferences(db, user, updates):
     db.commit()
 
     return get_preferences(user)
+
+
+def favorites(user):
+    """Favoris encore presents dans la cote, dans l'ordre d'ajout."""
+
+    known = market_service.market_data.get_structures()
+
+    return [symbol for symbol in (user.favorites or []) if symbol in known]
+
+
+def set_favorite(db, user, symbol, followed):
+    """Ajoute (followed) ou retire un titre des favoris."""
+
+    if symbol not in market_service.market_data.get_structures():
+        raise NotFoundError(f"Titre inconnu : {symbol}")
+
+    current = [s for s in (user.favorites or []) if s != symbol]
+
+    # Nouvelle liste : SQLAlchemy ne voit pas une modification en place.
+    user.favorites = current + [symbol] if followed else current
+
+    db.commit()
+
+    return favorites(user)

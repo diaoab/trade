@@ -903,4 +903,4 @@ print(f"\n-> {RESULT_DIR / 'model_comparison.csv'}")
 print(f"-> {RESULT_DIR / 'feature_importance.csv'}")
 print(f"-> {RESULT_DIR / 'prepared_dataset.csv'}")
 
-print("\nLancer l'application : streamlit run app.py" (dossier trade_admin)")
+print("\nLancer l'interface d'administration : npm run dev (dossier trade_admin)")

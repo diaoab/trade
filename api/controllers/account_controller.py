@@ -49,3 +49,15 @@ def update_preferences(
     )
 
     return ok(preferences, "Réglages enregistrés")
+
+
+def get_favorites(user: User = Depends(current_user)):
+    return ok(account_service.favorites(user), "Favoris récupérés")
+
+
+def add_favorite(symbol: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return ok(account_service.set_favorite(db, user, symbol, True), "Ajouté aux favoris")
+
+
+def remove_favorite(symbol: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return ok(account_service.set_favorite(db, user, symbol, False), "Retiré des favoris")

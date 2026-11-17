@@ -303,6 +303,9 @@ def test_market_and_analysis(client):
 
     assert overview[0]["decision"] in ("ACHETER", "CONSERVER", "VENDRE")
 
+    # Signal de la seance precedente, pour reperer les bascules.
+    assert overview[0]["previous_decision"] in ("ACHETER", "CONSERVER", "VENDRE")
+
     body = _data(client.get(f"{V1}/structures/TEST/analysis", headers=headers))
 
     assert body["result"]["decision"] == overview[0]["decision"]
@@ -394,6 +397,13 @@ def test_portfolio_is_private_to_each_user(client):
 
     assert added["positions"][0]["valuation"]["cost"] == 9000
 
+    # Date de la seance utilisee pour valoriser, reprise au total.
+    last_date = added["positions"][0]["last_date"]
+
+    assert len(last_date) == 10 and last_date[4] == "-"
+
+    assert added["totals"]["as_of"] == last_date
+
     assert _data(client.get(f"{V1}/portfolio", headers=bob))["positions"] == []
 
     position_id = added["positions"][0]["id"]
@@ -407,6 +417,30 @@ def test_portfolio_is_private_to_each_user(client):
         f"{V1}/portfolio/positions/{position_id}",
         headers=alice
     ))["positions"] == []
+
+
+def test_position_bought_after_last_quote_is_not_valued(client):
+
+    headers = _signup(client)
+
+    # Les cours de TEST s'arretent mi-2025 : un achat de 2026 n'a pas de cours.
+    for buy_date in ("2025-02-03", "2026-03-02"):
+        body = _data(client.post(
+            f"{V1}/portfolio/positions",
+            headers=headers,
+            json={"symbol": "TEST", "quantity": 10, "buy_price": 900, "buy_date": buy_date}
+        ))
+
+    recent = next(p for p in body["positions"] if p["buy_date"] == "2026-03-02")
+
+    assert recent["awaiting_quote"] is True
+
+    assert recent["valuation"] is None
+
+    # Seule la position valorisee entre dans les totaux.
+    assert body["totals"]["cost"] == 9000
+
+    assert body["totals"]["awaiting_quote"] == 1
 
 
 def test_assistant_quota(client, monkeypatch):
@@ -1096,3 +1130,107 @@ def test_migrations_match_models(tmp_path):
         assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
 
     command.downgrade(config, "base")
+
+
+def test_alerts_signal_changes_and_seen(client, monkeypatch):
+
+    from api.services import alerts_service, market_service
+
+    market_service.results_cache.clear()
+
+    # Historique stabilise factice : le signal bascule a chaque seance.
+    def alternating(symbol, preferences):
+        dates = pd.bdate_range("2025-06-02", periods=market_service.HISTORY_SESSIONS)
+        return [
+            ({"Date": day}, {"decision": "ACHETER" if index % 2 else "VENDRE"}, None, None)
+            for index, day in enumerate(dates)
+        ]
+
+    monkeypatch.setattr(market_service, "decision_history", alternating)
+
+    headers = _signup(client)
+
+    body = _data(client.get(f"{V1}/alerts", headers=headers))
+
+    signals = [a for a in body["alerts"] if a["kind"] == "signal"]
+
+    assert len(signals) == alerts_service.ALERT_SESSIONS
+
+    assert signals[0]["before"] != signals[0]["after"]
+
+    # Plus recentes d'abord, identifiants uniques, toutes non lues.
+    assert [a["date"] for a in signals] == sorted((a["date"] for a in signals), reverse=True)
+
+    assert len({a["id"] for a in body["alerts"]}) == len(body["alerts"])
+
+    assert body["unread"] == len(body["alerts"])
+
+    seen = _data(client.post(f"{V1}/alerts/seen", headers=headers))
+
+    assert seen["unread"] == 0
+
+    assert _data(client.get(f"{V1}/alerts", headers=headers))["unread"] == 0
+
+    market_service.results_cache.clear()
+
+
+def test_market_analysis_and_alerts_share_the_stable_signal(client):
+
+    from api.services import market_service
+
+    market_service.results_cache.clear()
+
+    headers = _signup(client)
+
+    entry = _data(client.get(f"{V1}/market", headers=headers))[0]
+
+    result = _data(client.get(f"{V1}/structures/TEST/analysis", headers=headers))["result"]
+
+    # Meme signal sur le Marche et l'Analyse, fonde sur le score lisse.
+    assert entry["decision"] == result["decision"]
+
+    assert entry["score"] == result["score"]
+
+    assert "session_score" in result and "session_decision" in result
+
+    analysis = _data(client.get(f"{V1}/structures/TEST/analysis", headers=headers))
+
+    assert analysis["round_trip_fee"] > 0
+
+
+def test_favorites_and_targeted_alerts(client, monkeypatch):
+
+    from api.services import market_service
+
+    market_service.results_cache.clear()
+
+    def alternating(symbol, preferences):
+        dates = pd.bdate_range("2025-06-02", periods=market_service.HISTORY_SESSIONS)
+        return [
+            ({"Date": day}, {"decision": "ACHETER" if index % 2 else "VENDRE"}, None, None)
+            for index, day in enumerate(dates)
+        ]
+
+    monkeypatch.setattr(market_service, "decision_history", alternating)
+
+    headers = _signup(client)
+
+    assert _data(client.get(f"{V1}/account/favorites", headers=headers)) == []
+
+    # Sans favori ni position : alertes sur tous les titres.
+    assert _data(client.get(f"{V1}/alerts", headers=headers))["alerts"]
+
+    assert client.put(f"{V1}/account/favorites/INCONNU", headers=headers).status_code == 404
+
+    assert _data(client.put(f"{V1}/account/favorites/TEST", headers=headers)) == ["TEST"]
+
+    # Ajout idempotent.
+    assert _data(client.put(f"{V1}/account/favorites/TEST", headers=headers)) == ["TEST"]
+
+    alerts = _data(client.get(f"{V1}/alerts", headers=headers))["alerts"]
+
+    assert alerts and all(a["favorite"] for a in alerts)
+
+    assert _data(client.delete(f"{V1}/account/favorites/TEST", headers=headers)) == []
+
+    market_service.results_cache.clear()

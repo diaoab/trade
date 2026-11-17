@@ -9,7 +9,8 @@ import pandas as pd
 from core.engine.decision_engine import analyze
 from core.engine.indicators import RSI_OVERBOUGHT, RSI_OVERSOLD
 from core.engine.market_data import cutoff_date
-from core.engine.predictor import ModelUnavailable, predict_row
+from core.engine.predictor import ModelUnavailable, predict_row, predict_rows
+from core.engine.stability import WARMUP_SESSIONS, stabilize
 
 
 def analyse_session(row, selected_parameters, weights, model_metadata):
@@ -43,6 +44,47 @@ def analyse_session(row, selected_parameters, weights, model_metadata):
     )
 
     return result, ml_result, weights
+
+
+def analyse_sessions(rows, selected_parameters, weights, model_metadata):
+    """analyse_session sur plusieurs seances, le modele n'etant appele
+    qu'une fois (cf. predict_rows). Meme resultat, seance par seance."""
+
+    try:
+        ml_results = predict_rows(rows)
+    except ModelUnavailable:
+        ml_results = [None] * len(rows)
+
+    if model_metadata is not None and not model_metadata["beats_baseline"]:
+        weights = {**weights, "Machine Learning": 0}
+
+    return [
+        (analyze(row, ml_result, selected_parameters, weights), ml_result, weights)
+        for row, ml_result in zip(rows, ml_results)
+    ]
+
+
+def analyse_history(prepared, count, selected_parameters, weights, model_metadata):
+    """Les `count` dernieres seances exploitables avec leur signal stabilise
+    (cf. core.engine.stability) : [(seance, resultat, resultat ML, poids)],
+    de la plus ancienne a la plus recente. WARMUP_SESSIONS seances de plus
+    sont calculees pour amorcer la moyenne lissee, puis ecartees."""
+
+    sessions = latest_sessions(prepared, count=count + WARMUP_SESSIONS)
+
+    if not sessions:
+        return []
+
+    analysed = analyse_sessions(sessions, selected_parameters, weights, model_metadata)
+
+    stable = stabilize([result for result, _, _ in analysed])
+
+    history = [
+        (session, result, ml_result, used_weights)
+        for session, result, (_, ml_result, used_weights) in zip(sessions, stable, analysed)
+    ]
+
+    return history[-count:]
 
 
 # Colonnes sans lesquelles ni le graphique ni le moteur de decision ne

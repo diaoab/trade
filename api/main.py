@@ -22,7 +22,7 @@ from api.middlewares.error_handler import register_error_handlers
 from api.middlewares.rate_limit import GlobalRateLimitMiddleware
 from api.middlewares.request_logger import RequestLoggerMiddleware
 from api.routes import api_router
-from api.services import market_service
+from api.services import alerts_service, market_service
 from api.utils.logger import configure_logging
 from api.utils.response import fail
 
@@ -41,6 +41,12 @@ def warm_market_cache():
         market_service.market_overview(None)
     except Exception:
         logger.exception("Prechauffage du cache du marche en echec")
+
+    # Alertes : une analyse par seance examinee, encore plus longue a froid.
+    try:
+        alerts_service.cached_events(None)
+    except Exception:
+        logger.exception("Prechauffage du cache des alertes en echec")
 
 
 @asynccontextmanager

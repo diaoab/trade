@@ -192,6 +192,61 @@ def predict_row(row, model=None, features=None):
     return result
 
 
+def predict_rows(rows, model=None, features=None):
+    """predict_row sur plusieurs seances, en un seul appel au modele :
+    une foret aleatoire coute surtout a l'appel, pas a la ligne (environ
+    120 ms par seance une a une). Une seance aux indicateurs incomplets
+    donne None ; des variables absentes levent ModelUnavailable."""
+
+    if not rows:
+        return []
+
+    model = model if model is not None else load_model()
+
+    features = features if features is not None else load_features()
+
+    missing = [feature for feature in features if feature not in rows[0].index]
+
+    if missing:
+        raise ModelUnavailable(
+            "Variables absentes de la seance analysee : " + ", ".join(missing)
+        )
+
+    complete = [index for index, row in enumerate(rows) if not row[features].isna().any()]
+
+    results = [None] * len(rows)
+
+    if not complete:
+        return results
+
+    X = np.array([rows[index][features].astype(float).to_numpy() for index in complete])
+
+    import pandas as pd
+
+    probabilities = model.predict_proba(pd.DataFrame(X, columns=features))
+
+    reference = load_probability_reference()
+
+    for index, row_probabilities in zip(complete, probabilities):
+
+        probability_up = float(row_probabilities[1])
+
+        result = {
+            "prediction": int(model.classes_[row_probabilities.argmax()]),
+            "probability_down": float(row_probabilities[0]),
+            "probability_up": probability_up
+        }
+
+        if reference is not None and len(reference) > 0:
+            percentile = float(np.searchsorted(reference, probability_up, side="left") / len(reference) * 100)
+            result["ml_percentile"] = percentile
+            result["ml_score"] = percentile
+
+        results[index] = result
+
+    return results
+
+
 def predict(df):
     """Predit sur la derniere seance exploitable d'un historique."""
 

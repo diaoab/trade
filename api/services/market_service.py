@@ -24,7 +24,7 @@ from core.constants import (
 )
 from core.engine import market_data, predictor
 from core.engine.analysis import (
-    analyse_session,
+    analyse_history,
     latest_sessions,
     next_dividend_cutoff,
     session_changes
@@ -273,8 +273,6 @@ def _market_overview(preferences):
 
     settings = user_settings(preferences)
 
-    model_metadata = load_model_metadata()
-
     overview = []
 
     for symbol, structure in market_data.get_structures().items():
@@ -294,6 +292,8 @@ def _market_overview(preferences):
             "name": structure["name"],
             **quote,
             "decision": None,
+            # Signal de la seance precedente : l'app signale les bascules.
+            "previous_decision": None,
             "score": None,
             "confidence": None,
             "changes": [],
@@ -306,19 +306,13 @@ def _market_overview(preferences):
             )
         }
 
-        sessions = latest_sessions(prepared, count=2)
+        history = decision_history(symbol, preferences)[-2:]
 
-        if sessions and settings["selected_parameters"]:
+        if history:
 
-            results = [
-                analyse_session(
-                    session,
-                    settings["selected_parameters"],
-                    DEFAULT_WEIGHTS,
-                    model_metadata
-                )[0]
-                for session in sessions
-            ]
+            sessions = [session for session, _, _, _ in history]
+
+            results = [result for _, result, _, _ in history]
 
             entry.update({
                 "decision": results[-1]["decision"],
@@ -327,6 +321,7 @@ def _market_overview(preferences):
             })
 
             if len(sessions) == 2:
+                entry["previous_decision"] = results[0]["decision"]
                 entry["changes"] = session_changes(
                     sessions[0],
                     sessions[1],
@@ -337,6 +332,45 @@ def _market_overview(preferences):
         overview.append(entry)
 
     return to_json(overview)
+
+
+# Seances dont le signal stabilise est garde en cache : la derniere pour
+# l'ecran Analyse, les deux dernieres pour le Marche, toutes pour les
+# alertes (cf. alerts_service.ALERT_SESSIONS).
+HISTORY_SESSIONS = 11
+
+
+def decision_history(symbol, preferences):
+    """Signal stabilise des HISTORY_SESSIONS dernieres seances d'un titre
+    (cf. core.engine.stability) : [(seance, resultat, resultat ML, poids)],
+    de la plus ancienne a la plus recente ; [] si rien n'est calculable.
+    Source unique du signal : Marche, Analyse et alertes concordent."""
+
+    return results_cache.get_or_compute(
+        result_key("history", preferences, symbol),
+        lambda: _decision_history(symbol, preferences)
+    )
+
+
+def _decision_history(symbol, preferences):
+
+    settings = user_settings(preferences)
+
+    if not settings["selected_parameters"]:
+        return []
+
+    try:
+        prepared = load_prepared(symbol, settings["adjust_dividends"])
+    except (FileNotFoundError, ValueError):
+        return []
+
+    return analyse_history(
+        prepared,
+        HISTORY_SESSIONS,
+        settings["selected_parameters"],
+        DEFAULT_WEIGHTS,
+        load_model_metadata()
+    )
 
 
 def analyse_raw(symbol, preferences):
@@ -361,16 +395,9 @@ def analyse_raw(symbol, preferences):
             "Aucun indicateur sélectionné dans les réglages."
         )
 
-    session = sessions[-1]
-
     model_metadata = load_model_metadata()
 
-    result, ml_result, weights = analyse_session(
-        session,
-        settings["selected_parameters"],
-        DEFAULT_WEIGHTS,
-        model_metadata
-    )
+    session, result, ml_result, weights = decision_history(symbol, preferences)[-1]
 
     quote = _quote(prepared)
 
@@ -459,5 +486,7 @@ def _analyse_structure(symbol, preferences):
                 if column in chart.columns
             }
         },
-        "indicators": raw["settings"]["selected_parameters"]
+        "indicators": raw["settings"]["selected_parameters"],
+        # Frais d'un aller-retour (%), pour le simulateur d'achat de l'app.
+        "round_trip_fee": raw["settings"]["round_trip_fee"]
     })

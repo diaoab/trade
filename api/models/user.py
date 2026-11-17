@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String, false, true
+from sqlalchemy import JSON, Boolean, Date, DateTime, Integer, String, false, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from api.models.base import Base, aware, utcnow
@@ -49,6 +49,13 @@ class User(Base):
     # Attribue par python -m api.scripts.grant_admin, jamais par l'API
     # publique.
     role: Mapped[str] = mapped_column(String(20), default="user", server_default="user")
+
+    # Symboles des titres suivis de pres : en tete du Marche, et seuls (avec
+    # les titres detenus) a declencher des alertes de signal.
+    favorites: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+
+    # Les alertes datees de ce jour ou avant sont lues (cf. alerts_service).
+    alerts_seen_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     last_login_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),

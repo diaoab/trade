@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from api.routes import (
     account_route,
     admin,
+    alerts_route,
     auth_route,
     billing_route,
     market_route,
@@ -19,6 +20,7 @@ for module in (
     account_route,
     market_route,
     portfolio_route,
+    alerts_route,
     billing_route,
     admin
 ):

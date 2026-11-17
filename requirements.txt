@@ -1,5 +1,5 @@
 # Dependances d'execution de l'API, des services et de l'entrainement.
-# L'interface Streamlit (dossier trade_admin) ajoute streamlit et plotly.
+# L'interface d'administration (dossier trade_admin) est une app Vite/React séparée.
 # Bornes basses = versions avec lesquelles les tests passent sous
 # Python 3.9 ; rien n'interdit des versions plus recentes.
 pandas>=2.2
