@@ -132,7 +132,12 @@ admin_limiter = RateLimiter(
 )
 
 
+# Mode demo de l'app (sans compte) : routes publiques en lecture seule.
+demo_limiter = RateLimiter(**AUTHENTICATED_RATE_LIMIT)
+
 auth_rate_limit = Depends(by_ip(auth_limiter))
+
+demo_rate_limit = Depends(by_ip(demo_limiter))
 
 authenticated_rate_limit = Depends(by_user(authenticated_limiter))
 

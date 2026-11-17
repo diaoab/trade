@@ -1234,3 +1234,31 @@ def test_favorites_and_targeted_alerts(client, monkeypatch):
     assert _data(client.delete(f"{V1}/account/favorites/TEST", headers=headers)) == []
 
     market_service.results_cache.clear()
+
+
+def test_demo_routes_are_public_and_read_only(client):
+
+    # Sans jeton : Marche et Analyse en lecture.
+    market = client.get(f"{V1}/demo/market")
+
+    assert market.status_code == 200
+
+    assert [entry["symbol"] for entry in _data(market)] == ["TEST"]
+
+    analysis = client.get(f"{V1}/demo/structures/TEST/analysis")
+
+    assert analysis.status_code == 200
+
+    assert _data(analysis)["result"]["decision"] in ("ACHETER", "CONSERVER", "VENDRE")
+
+    assert client.get(f"{V1}/demo/structures/INCONNU/analysis").status_code == 404
+
+    # Le reste demande toujours un compte.
+    for method, path in (
+        ("get", "/market"),
+        ("get", "/portfolio"),
+        ("get", "/alerts"),
+        ("get", "/account/favorites"),
+        ("post", "/structures/TEST/assistant/stream")
+    ):
+        assert getattr(client, method)(f"{V1}{path}").status_code == 401

@@ -8,6 +8,7 @@ from api.routes import (
     alerts_route,
     auth_route,
     billing_route,
+    demo_route,
     market_route,
     portfolio_route
 )
@@ -19,6 +20,7 @@ for module in (
     auth_route,
     account_route,
     market_route,
+    demo_route,
     portfolio_route,
     alerts_route,
     billing_route,
