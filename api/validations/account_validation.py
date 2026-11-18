@@ -5,10 +5,20 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
+class NotificationsIn(BaseModel):
+    """Champs absents : inchanges."""
+
+    enabled: Optional[bool] = None
+    buy: Optional[bool] = None
+    sell: Optional[bool] = None
+    dividend: Optional[bool] = None
+
+
 class PreferencesIn(BaseModel):
     selected_parameters: Optional[List[str]] = None
     adjust_dividends: Optional[bool] = None
     round_trip_fee: Optional[float] = Field(default=None, ge=0, le=20)
+    notifications: Optional[NotificationsIn] = None
 
 
 class ProfileIn(BaseModel):

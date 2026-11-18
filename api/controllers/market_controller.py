@@ -14,6 +14,14 @@ from api.utils.response import ok, revalidated
 from api.validations.market_validation import ChatIn
 
 
+def refresh_quotes(user: User = Depends(current_user)):
+    """Bouton "Recuperer les cours du jour" de l'app : flux du prestataire
+    s'il est configure, sinon Sika Finance (une lecture au plus toutes les
+    10 minutes pour tout le serveur)."""
+
+    return ok(market_service.refresh_quotes(), "Cours du jour récupérés")
+
+
 def structures(user: User = Depends(current_user)):
 
     return ok([

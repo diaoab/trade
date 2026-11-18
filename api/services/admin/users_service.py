@@ -126,6 +126,34 @@ def get_user(db, user_id):
     }
 
 
+def create_account(db, email, password, role="user", plan="free", must_change_password=True,
+                   first_name=None, last_name=None, phone=None):
+    """Compte cree depuis le back-office : utilisateur de l'app mobile ou
+    admin. must_change_password : le mot de passe choisi par l'admin est
+    provisoire, l'app (ou le back-office) impose d'en choisir un nouveau a
+    la premiere connexion."""
+
+    admin = role == "admin"
+
+    user = User(
+        email=auth_service.check_new_account(db, email, password, admin=admin),
+        password_hash=token_service.hash_password(password),
+        first_name=account_service.clean_text(first_name),
+        last_name=account_service.clean_text(last_name),
+        phone=account_service.clean_text(phone),
+        role=role,
+        plan=plan,
+        # Toujours provisoire pour un admin (acces au back-office).
+        must_change_password=must_change_password or admin,
+        preferences={}
+    )
+
+    db.add(user)
+    db.commit()
+
+    return format_admin_user(user)
+
+
 def create_admin(db, email, password, first_name=None, last_name=None, phone=None):
     """Compte administrateur cree depuis le back-office, actif d'emblee. Le
     mot de passe choisi par l'admin createur est provisoire : le nouvel

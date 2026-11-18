@@ -445,7 +445,8 @@ def _symbol_from_path(path):
 def get_structures():
     """Recense les titres disponibles dans data/.
 
-    Retourne {symbole: {"name": ..., "path": Path}}. Le nom lisible vient de
+    Retourne {symbole: {"name": ..., "path": Path, "dividends": [...],
+    "aliases": [...]}}. Le nom lisible vient de
     data/structures.json quand il existe, sinon du nom de fichier.
     """
 
@@ -469,7 +470,11 @@ def get_structures():
 
             "path": path,
 
-            "dividends": clean_dividends(entry.get("dividends", []))
+            "dividends": clean_dividends(entry.get("dividends", [])),
+
+            # Autres noms du titre dans les sources de cours (ex. "BICICI"
+            # sur Sika Finance pour "BIBI CI").
+            "aliases": [str(alias) for alias in entry.get("aliases", [])]
         }
 
     return structures
@@ -764,7 +769,9 @@ def match_structure_name(name):
 
     for symbol, structure in get_structures().items():
 
-        if key in (_name_key(structure["name"]), _name_key(symbol)):
+        names = [structure["name"], symbol, *structure.get("aliases", [])]
+
+        if key in {_name_key(name) for name in names}:
             return structure["name"]
 
     return name

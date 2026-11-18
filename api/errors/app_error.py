@@ -39,6 +39,14 @@ class ForbiddenError(AppError):
     default_message = "Accès refusé"
 
 
+class PlanLimitError(AppError):
+    """Limite de l'offre gratuite atteinte (402 : l'app propose l'offre Pro
+    ; un 403 la deconnecterait)."""
+
+    status_code = 402
+    default_message = "Limite de l'offre gratuite atteinte."
+
+
 class NotFoundError(AppError):
     status_code = 404
     default_message = "Ressource introuvable"

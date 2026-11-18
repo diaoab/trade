@@ -52,6 +52,37 @@ CHART_COLUMNS = [
 ]
 
 
+def refresh_quotes():
+    """Cours du jour pour l'app : {"date", "updated", "structures",
+    "missing"}. date : derniere seance connue apres la mise a jour."""
+
+    from api.errors.app_error import BadGatewayError
+    from api.services import quotes_feed, sika_feed
+
+    try:
+        if quotes_feed.QUOTES_FEED_URL:
+            report = {"structures": quotes_feed.refresh(), "missing": []}
+        else:
+            report = sika_feed.refresh()
+    except Exception as error:
+        raise BadGatewayError(f"Cours du jour indisponibles : {error}")
+
+    dates = []
+
+    for symbol in market_data.get_structures():
+        try:
+            dates.append(load_prepared(symbol)["Date"].iloc[-1])
+        except (FileNotFoundError, ValueError):
+            continue
+
+    return to_json({
+        "date": max(dates).strftime("%Y-%m-%d") if dates else None,
+        "updated": sum(1 for item in report["structures"].values() if "error" not in item),
+        "structures": report["structures"],
+        "missing": report.get("missing", [])
+    })
+
+
 def user_settings(preferences):
     """Reglages d'analyse d'un compte, valeurs par defaut comprises."""
 
@@ -131,8 +162,26 @@ def to_json(value):
     return value
 
 
+# Au-dela de cet ecart entre deux seances, l'historique a un trou (cours
+# manquants) : la variation, les changements et les bascules de signal
+# entre ces deux seances ne veulent rien dire et ne sont pas annonces.
+MAX_SESSION_GAP_DAYS = 10
+
+
+def is_gap(previous_date, date):
+    """Vrai si deux seances consecutives de l'historique sont separees par
+    un trou de cours."""
+
+    if previous_date is None or date is None:
+        return False
+
+    return (pd.Timestamp(date) - pd.Timestamp(previous_date)).days > MAX_SESSION_GAP_DAYS
+
+
 def _quote(prepared):
-    """Dernier cours reellement cote, variation, date de seance."""
+    """Dernier cours reellement cote, variation, date de seance. Pas de
+    variation apres un trou de cours (cf. MAX_SESSION_GAP_DAYS) ; "gap_from"
+    donne alors la seance d'avant le trou."""
 
     quoted = prepared.get("Close_Raw", prepared["Close"])
 
@@ -140,12 +189,19 @@ def _quote(prepared):
 
     previous = float(quoted.iloc[-2]) if len(quoted) > 1 else None
 
-    date = prepared["Date"].iloc[-1] if "Date" in prepared.columns else None
+    dates = prepared["Date"] if "Date" in prepared.columns else None
+
+    date = dates.iloc[-1] if dates is not None else None
+
+    previous_date = dates.iloc[-2] if dates is not None and len(dates) > 1 else None
+
+    gap = is_gap(previous_date, date)
 
     return {
         "close": close,
-        "pct": (close / previous - 1) * 100 if previous else None,
-        "date": date
+        "pct": (close / previous - 1) * 100 if previous and not gap else None,
+        "date": date,
+        "gap_from": previous_date if gap else None
     }
 
 
@@ -320,7 +376,7 @@ def _market_overview(preferences):
                 "confidence": results[-1]["confidence"]
             })
 
-            if len(sessions) == 2:
+            if len(sessions) == 2 and not is_gap(sessions[0]["Date"], sessions[1]["Date"]):
                 entry["previous_decision"] = results[0]["decision"]
                 entry["changes"] = session_changes(
                     sessions[0],

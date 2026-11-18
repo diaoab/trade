@@ -12,6 +12,9 @@ seance :
 "palm_ci" sont reconnus). Les seances deja connues sont mises a jour, les
 nouvelles ajoutees (cf. core.engine.market_data.save_uploaded_structure).
 
+Sans QUOTES_FEED_URL, les cours viennent de la page publique de Sika
+Finance (cf. sika_feed).
+
 Lancer a la main : python -m api.jobs.refresh_market
 """
 
@@ -91,11 +94,13 @@ def apply_feed(feed):
 
 
 def refresh(client=None):
-    """Telecharge le flux et l'integre. Leve RuntimeError si aucun flux
-    n'est configure."""
+    """Telecharge le flux et l'integre ; sans flux configure, lit les cours
+    du jour sur Sika Finance (cf. sika_feed)."""
 
     if not QUOTES_FEED_URL:
-        raise RuntimeError("QUOTES_FEED_URL n'est pas défini : aucun flux de cours configuré.")
+        from api.services import sika_feed
+
+        return sika_feed.refresh(client, force=True)["structures"]
 
     headers = {}
 

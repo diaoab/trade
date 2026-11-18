@@ -3,6 +3,7 @@ memoire et un historique synthetique : rien n'est lu ni ecrit dans le vrai
 projet."""
 
 import hashlib
+from datetime import date
 import json
 import os
 
@@ -64,6 +65,11 @@ def client(tmp_path, monkeypatch):
     rate_limit.reset_all()
 
     monkeypatch.setattr(settings, "WARM_CACHE", False)
+
+    # Historique synthetique de 2025 : pas de controle de fraicheur ni de
+    # lecture des cours du jour sur le reseau.
+    monkeypatch.setattr(settings, "MAX_QUOTE_AGE_DAYS", None)
+    monkeypatch.setattr(settings, "AUTO_REFRESH_QUOTES", False)
 
     with TestClient(main.app) as test_client:
         yield test_client
@@ -395,7 +401,16 @@ def test_portfolio_is_private_to_each_user(client):
 
     assert len(added["positions"]) == 1
 
-    assert added["positions"][0]["valuation"]["cost"] == 9000
+    # Achat au dernier cours, date du jour : prix et date envoyes ignores.
+    bought = added["positions"][0]
+
+    assert bought["buy_price"] == pytest.approx(bought["last_close"])
+
+    assert bought["buy_price"] != 900
+
+    assert bought["buy_date"] == date.today().isoformat()
+
+    assert bought["valuation"]["cost"] == pytest.approx(10 * bought["last_close"])
 
     # Date de la seance utilisee pour valoriser, reprise au total.
     last_date = added["positions"][0]["last_date"]
@@ -419,28 +434,41 @@ def test_portfolio_is_private_to_each_user(client):
     ))["positions"] == []
 
 
-def test_position_bought_after_last_quote_is_not_valued(client):
+def test_purchase_refused_when_todays_quote_is_missing(client, monkeypatch):
 
     headers = _signup(client)
 
-    # Les cours de TEST s'arretent mi-2025 : un achat de 2026 n'a pas de cours.
-    for buy_date in ("2025-02-03", "2026-03-02"):
-        body = _data(client.post(
-            f"{V1}/portfolio/positions",
-            headers=headers,
-            json={"symbol": "TEST", "quantity": 10, "buy_price": 900, "buy_date": buy_date}
-        ))
+    # Les cours de TEST s'arretent en 2025 : plus de 5 jours, achat refuse.
+    monkeypatch.setattr(settings, "MAX_QUOTE_AGE_DAYS", 5)
 
-    recent = next(p for p in body["positions"] if p["buy_date"] == "2026-03-02")
+    refused = client.post(f"{V1}/portfolio/positions", headers=headers, json={"symbol": "TEST", "quantity": 10})
 
-    assert recent["awaiting_quote"] is True
+    assert refused.status_code == 503
 
-    assert recent["valuation"] is None
+    assert "cours du jour" in refused.json()["message"]
 
-    # Seule la position valorisee entre dans les totaux.
-    assert body["totals"]["cost"] == 9000
+    assert _data(client.get(f"{V1}/portfolio", headers=headers))["positions"] == []
 
-    assert body["totals"]["awaiting_quote"] == 1
+
+def test_free_plan_limits(client, monkeypatch):
+
+    headers = _signup(client)
+
+    monkeypatch.setitem(settings.FREE_LIMITS, "positions", 2)
+    monkeypatch.setitem(settings.FREE_LIMITS, "favorites", 0)
+
+    me = _data(client.get(f"{V1}/account/me", headers=headers))
+
+    assert me["limits"] == {"positions": 2, "favorites": 0}
+
+    for _ in range(2):
+        assert client.post(f"{V1}/portfolio/positions", headers=headers, json={"symbol": "TEST", "quantity": 1}).status_code == 201
+
+    third = client.post(f"{V1}/portfolio/positions", headers=headers, json={"symbol": "TEST", "quantity": 1})
+
+    assert third.status_code == 402 and "offre gratuite" in third.json()["message"]
+
+    assert client.put(f"{V1}/account/favorites/TEST", headers=headers).status_code == 402
 
 
 def test_assistant_quota(client, monkeypatch):
@@ -1262,3 +1290,214 @@ def test_demo_routes_are_public_and_read_only(client):
         ("post", "/structures/TEST/assistant/stream")
     ):
         assert getattr(client, method)(f"{V1}{path}").status_code == 401
+
+
+# =========================================================
+# CORRECTIFS : COMPTES CREES PAR L'ADMIN, NOTIFICATIONS, SIKA FINANCE
+# =========================================================
+
+def test_admin_creates_app_user_who_must_change_password(client):
+
+    headers = _admin(client)
+
+    body = {"email": "client@example.com", "password": "provisoire1", "plan": "pro"}
+
+    user = _data(client.post(f"{V1}/admin/users", json=body, headers=headers))
+
+    assert user["role"] == "user" and user["must_change_password"] is True
+
+    login = _data(client.post(f"{V1}/auth/login", json={"email": "client@example.com", "password": "provisoire1"}))
+
+    assert login["user"]["must_change_password"] is True
+
+    assert login["user"]["plan"] == "pro" and login["user"]["limits"]["positions"] is None
+
+    changed = _data(client.put(
+        f"{V1}/auth/password",
+        json={"current_password": "provisoire1", "new_password": "personnel2"},
+        headers={"Authorization": f"Bearer {login['token']}"}
+    ))
+
+    me = _data(client.get(f"{V1}/account/me", headers={"Authorization": f"Bearer {changed['token']}"}))
+
+    assert me["must_change_password"] is False
+
+    # Sans mot de passe provisoire si l'admin le decoche.
+    free = _data(client.post(
+        f"{V1}/admin/users",
+        json={"email": "libre@example.com", "password": "provisoire1", "must_change_password": False},
+        headers=headers
+    ))
+
+    assert free["must_change_password"] is False
+
+
+def test_buy_and_sell_alerts_follow_notification_settings(client, monkeypatch):
+
+    from api.services import market_service
+
+    market_service.results_cache.clear()
+
+    # ACHETER -> CONSERVER -> VENDRE -> CONSERVER -> ACHETER ...
+    cycle = ["ACHETER", "CONSERVER", "VENDRE", "CONSERVER"]
+
+    def history(symbol, preferences):
+        dates = pd.bdate_range("2025-06-02", periods=market_service.HISTORY_SESSIONS)
+        return [({"Date": day}, {"decision": cycle[i % 4]}, None, None) for i, day in enumerate(dates)]
+
+    monkeypatch.setattr(market_service, "decision_history", history)
+
+    headers = _signup(client)
+
+    body = _data(client.get(f"{V1}/alerts", headers=headers))
+
+    signals = [a for a in body["alerts"] if a["kind"] == "signal"]
+
+    # Retours a CONSERVER : pas d'alerte.
+    assert signals and {a["after"] for a in signals} == {"ACHETER", "VENDRE"}
+
+    assert {a["action"] for a in signals} == {"buy", "sell"}
+
+    prefs = _data(client.get(f"{V1}/account/preferences", headers=headers))
+
+    assert prefs["notifications"] == {"enabled": True, "buy": True, "sell": True, "dividend": True}
+
+    saved = _data(client.put(f"{V1}/account/preferences", json={"notifications": {"buy": False}}, headers=headers))
+
+    assert saved["notifications"] == {"enabled": True, "buy": False, "sell": True, "dividend": True}
+
+    body = _data(client.get(f"{V1}/alerts", headers=headers))
+
+    assert {a["action"] for a in body["alerts"] if a["kind"] == "signal"} == {"sell"}
+
+    assert body["unread"] > 0
+
+    # Notifications coupees : liste consultable, aucune pastille.
+    _data(client.put(f"{V1}/account/preferences", json={"notifications": {"enabled": False}}, headers=headers))
+
+    body = _data(client.get(f"{V1}/alerts", headers=headers))
+
+    assert body["alerts"] and body["unread"] == 0 and body["notifications"]["enabled"] is False
+
+    market_service.results_cache.clear()
+
+
+SIKA_PAGE = """
+<table><tr><th>Nom</th><th>Ouverture</th><th>+Haut</th><th>+Bas</th><th>Dernier</th><th>Variation</th></tr>
+<tr><td>BRVM COMPOSITE</td><td>512.94</td><td>512.94</td><td>512.94</td><td>512.94</td><td>0.02%</td></tr></table>
+<table><tr><th>Nom</th><th>Ouverture</th><th>+Haut</th><th>+Bas</th><th>Volume (titres)</th>
+<th>Volume (XOF)</th><th>Dernier</th><th>Variation</th></tr>
+<tr><td class="allf"><a href="/marches/cotation_TST.ci">TEST</a></td><td>1&nbsp;010</td><td>1&nbsp;020</td>
+<td>1&nbsp;000</td><td>1&nbsp;835</td><td>16&nbsp;698&nbsp;500</td><td><b>1&nbsp;015</b></td><td>-1.09%</td></tr>
+<tr><td><a>AUTRE TITRE</a></td><td>50</td><td>50</td><td>50</td><td>10</td><td>500</td><td><b>50</b></td><td>0%</td></tr>
+</table>
+"""
+
+
+def test_sika_page_updates_followed_stocks_only(client, monkeypatch):
+
+    import datetime as dt
+
+    from api.services import sika_feed
+
+    page = sika_feed.parse_page(SIKA_PAGE)
+
+    assert page.to_dict("records")[0] == {
+        "name": "TEST", "open": 1010.0, "high": 1020.0, "low": 1000.0, "volume": 1835.0, "close": 1015.0
+    }
+
+    # Mercredi 18/11/2026 : avant 9 h, la page montre la seance de mardi.
+    utc = dt.timezone.utc
+    assert sika_feed.session_date(dt.datetime(2026, 11, 18, 8, 0, tzinfo=utc), []) == pd.Timestamp("2026-11-17")
+    assert sika_feed.session_date(dt.datetime(2026, 11, 18, 10, 0, tzinfo=utc), []) == pd.Timestamp("2026-11-18")
+    # Samedi : seance du vendredi.
+    assert sika_feed.session_date(dt.datetime(2026, 11, 21, 12, 0, tzinfo=utc), []) == pd.Timestamp("2026-11-20")
+
+    monkeypatch.setattr(sika_feed, "fetch", lambda client=None: SIKA_PAGE.encode())
+    monkeypatch.setattr(sika_feed, "session_date", lambda now=None: pd.Timestamp("2026-11-18"))
+
+    headers = _signup(client)
+
+    body = _data(client.post(f"{V1}/market/refresh", headers=headers))
+
+    # TEST mis a jour ; AUTRE TITRE, inconnu de l'app, n'est pas cree.
+    assert body["date"] == "2026-11-18"
+    assert body["updated"] == 1
+    assert set(market_data.get_structures()) == {"TEST"}
+
+    # Achat au cours du jour (fraicheur controlee).
+    monkeypatch.setattr(settings, "MAX_QUOTE_AGE_DAYS", 5)
+
+    from api.services import portfolio_service
+
+    db = next(main.app.dependency_overrides[get_db]())
+
+    from api.models import User
+
+    user = db.query(User).one()
+
+    added = portfolio_service.add_position(db, user, {"symbol": "TEST", "quantity": 2}, today=dt.date(2026, 11, 18))
+
+    position = added["positions"][0]
+
+    assert position["buy_price"] == 1015 and position["buy_date"] == "2026-11-18"
+    assert position["awaiting_quote"] is False and position["valuation"] is not None
+
+    sika_feed._last.update(at=0.0, report=None)
+
+
+def test_no_variation_across_a_gap_in_quotes(client, tmp_path):
+
+    from api.services import market_service
+
+    market_service.results_cache.clear()
+
+    # Une seance isolee onze mois apres la fin de l'historique.
+    history = pd.read_excel(tmp_path / "TEST.xlsx")
+    late = pd.DataFrame({"Date": [pd.Timestamp("2026-11-17")], "Close": [history["Close"].iloc[-1] * 1.3], "Volume": [10]})
+    pd.concat([history, late]).to_excel(tmp_path / "TEST.xlsx", index=False)
+
+    headers = _signup(client)
+
+    entry = _data(client.get(f"{V1}/market", headers=headers))[0]
+
+    assert entry["date"].startswith("2026-11-17")
+    assert entry["pct"] is None and entry["gap_from"] is not None
+    assert entry["changes"] == [] and entry["previous_decision"] is None
+
+    assert market_service.is_gap("2025-12-31", "2026-11-17")
+    assert not market_service.is_gap("2026-11-13", "2026-11-17")
+
+    market_service.results_cache.clear()
+
+
+def test_purchase_of_stock_absent_from_sika_explains_why(client, monkeypatch):
+
+    from api.services import sika_feed
+
+    headers = _signup(client)
+
+    monkeypatch.setattr(settings, "MAX_QUOTE_AGE_DAYS", 5)
+    monkeypatch.setattr(settings, "AUTO_REFRESH_QUOTES", True)
+    monkeypatch.setattr(sika_feed, "refresh", lambda *a, **k: {"structures": {}, "missing": ["TEST"]})
+
+    refused = client.post(f"{V1}/portfolio/positions", headers=headers, json={"symbol": "TEST", "quantity": 1})
+
+    assert refused.status_code == 503
+    assert "pas coté sur Sika Finance" in refused.json()["message"]
+
+
+def test_sika_alias_links_a_stock_named_differently(client):
+
+    from api.services import sika_feed
+
+    # "BIBI CI" s'appelle "BICICI" sur Sika Finance.
+    market_data._write_registry({"TEST": {"name": "BIBI CI", "aliases": ["BICICI"]}})
+
+    page = pd.DataFrame([{"name": "BICICI", "open": 32495, "high": 32495, "low": 32200, "volume": 179, "close": 32200}])
+
+    rows, missing = sika_feed.known_rows(page, pd.Timestamp("2026-11-17"))
+
+    assert rows.to_dict("records")[0]["name"] == "BIBI CI" and missing == []
+
+    assert market_data.match_structure_name("BICICI") == "BIBI CI"

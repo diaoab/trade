@@ -7,7 +7,7 @@ from sqlalchemy import select
 from core.constants import INDICATOR_OPTIONS
 
 from api.config.settings import ASSISTANT_DAILY_LIMITS
-from api.errors.app_error import NotFoundError, ValidationError
+from api.errors.app_error import NotFoundError, PlanLimitError, ValidationError
 from api.models import AssistantUsage, PasswordResetCode, Payment, RefreshToken
 from api.services import market_service
 
@@ -67,10 +67,26 @@ def update_profile(db, user, changes):
     db.commit()
 
 
+# Notifications : interrupteur general et types d'alerte (tout actif par
+# defaut).
+NOTIFICATION_DEFAULTS = {"enabled": True, "buy": True, "sell": True, "dividend": True}
+
+
+def notification_settings(preferences):
+
+    stored = (preferences or {}).get("notifications") or {}
+
+    return {
+        key: bool(stored.get(key, default))
+        for key, default in NOTIFICATION_DEFAULTS.items()
+    }
+
+
 def get_preferences(user):
 
     return {
         **market_service.user_settings(user.preferences),
+        "notifications": notification_settings(user.preferences),
         "indicator_options": INDICATOR_OPTIONS
     }
 
@@ -83,6 +99,15 @@ def update_preferences(db, user, updates):
 
         if unknown:
             raise ValidationError("Indicateurs inconnus : " + ", ".join(sorted(unknown)))
+
+    if "notifications" in updates:
+        updates = {
+            **updates,
+            "notifications": {
+                **notification_settings(user.preferences),
+                **{k: v for k, v in (updates["notifications"] or {}).items() if v is not None}
+            }
+        }
 
     # Nouveau dict : SQLAlchemy ne voit pas une modification en place d'une
     # colonne JSON.
@@ -108,6 +133,16 @@ def set_favorite(db, user, symbol, followed):
         raise NotFoundError(f"Titre inconnu : {symbol}")
 
     current = [s for s in (user.favorites or []) if s != symbol]
+
+    from api.utils.format_user import plan_limits
+
+    limit = plan_limits(user)["favorites"]
+
+    if followed and symbol not in (user.favorites or []) and limit is not None and len(current) >= limit:
+        raise PlanLimitError(
+            f"L'offre gratuite est limitée à {limit} favoris. "
+            "Passe à l'offre Pro pour en suivre davantage."
+        )
 
     # Nouvelle liste : SQLAlchemy ne voit pas une modification en place.
     user.favorites = current + [symbol] if followed else current

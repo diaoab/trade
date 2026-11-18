@@ -8,6 +8,7 @@ router = APIRouter()
 # Chemins fixes avant /users/{user_id}, qui les capterait sinon.
 router.add_api_route("/users", controller.list_users, methods=["GET"])
 router.add_api_route("/users/export", controller.export_users, methods=["GET"])
+router.add_api_route("/users", controller.create_user, methods=["POST"])
 router.add_api_route("/users/admins", controller.create_admin, methods=["POST"])
 router.add_api_route("/users/{user_id}", controller.get_user, methods=["GET"])
 router.add_api_route("/users/{user_id}", controller.update_user, methods=["PATCH"])

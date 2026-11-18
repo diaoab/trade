@@ -8,7 +8,7 @@ from api.models import User
 from api.models.base import utcnow
 from api.services.admin import users_service
 from api.utils.response import created, ok
-from api.validations.admin_validation import AdminCreateIn, UserUpdateIn
+from api.validations.admin_validation import AdminCreateIn, UserCreateIn, UserUpdateIn
 
 
 def list_users(
@@ -55,6 +55,20 @@ def create_admin(
     )
 
     return created(user, "Administrateur créé")
+
+
+def create_user(
+    body: UserCreateIn,
+    admin: User = Depends(require_admin_user),
+    db: Session = Depends(get_db)
+):
+
+    user = users_service.create_account(
+        db, body.email, body.password, body.role, body.plan, body.must_change_password,
+        body.first_name, body.last_name, body.phone
+    )
+
+    return created(user, "Compte créé")
 
 
 def get_user(user_id: int, db: Session = Depends(get_db)):

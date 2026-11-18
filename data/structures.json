@@ -1,5 +1,8 @@
 {
   "BIBI_CI": {
+    "aliases": [
+      "BICICI"
+    ],
     "name": "BIBI CI"
   },
   "PALM_CI": {

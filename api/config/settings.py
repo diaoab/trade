@@ -132,6 +132,26 @@ ASSISTANT_DAILY_LIMITS = {
     "pro": int(os.environ.get("ASSISTANT_LIMIT_PRO", "50"))
 }
 
+# Offre gratuite : lignes de portefeuille et favoris au plus (None = sans
+# limite). L'offre Pro n'en a pas.
+FREE_LIMITS = {
+    "positions": int(os.environ.get("FREE_MAX_POSITIONS", "5")),
+    "favorites": int(os.environ.get("FREE_MAX_FAVORITES", "5"))
+}
+
+# =========================================================
+# COURS DU JOUR
+# =========================================================
+
+# Un achat se fait au dernier cours connu, date du jour : refuse si ce cours
+# a plus de MAX_QUOTE_AGE_DAYS jours (week-end et ferie compris). None
+# desactive le controle.
+MAX_QUOTE_AGE_DAYS = int(os.environ.get("MAX_QUOTE_AGE_DAYS", "5"))
+
+# Cours trop anciens au moment d'un achat : relire d'abord ceux du jour
+# (flux ou Sika Finance, cf. quotes_feed).
+AUTO_REFRESH_QUOTES = os.environ.get("AUTO_REFRESH_QUOTES", "1") == "1"
+
 # =========================================================
 # PAYDUNYA
 # =========================================================

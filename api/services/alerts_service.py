@@ -1,4 +1,5 @@
-"""Alertes de l'utilisateur : signaux qui ont change et dividendes proches.
+"""Alertes de l'utilisateur : moments d'acheter ou de vendre (le signal
+passe a ACHETER ou a VENDRE) et dividendes proches.
 
 Les alertes se deduisent des historiques (aucune table a remplir chaque
 soir) : bascules de signal sur les ALERT_SESSIONS dernieres seances de
@@ -17,6 +18,7 @@ from core.engine import market_data
 from core.engine.analysis import latest_sessions, next_dividend_cutoff
 
 from api.services import market_service
+from api.services.account_service import notification_settings
 
 
 # Seances examinees pour les bascules de signal : deux semaines de bourse
@@ -26,6 +28,9 @@ ALERT_SESSIONS = market_service.HISTORY_SESSIONS - 1
 # Dividende signale quand la date butoir d'achat est a ce nombre de jours
 # ou moins.
 DIVIDEND_ALERT_DAYS = 7
+
+# Signal -> type d'alerte (et reglage de notification qui l'autorise).
+ACTIONS = {"ACHETER": "buy", "VENDRE": "sell"}
 
 
 def _day(value):
@@ -48,11 +53,21 @@ def _events(preferences):
 
             # Signal stabilise : une bascule annoncee est une vraie bascule,
             # pas un aller-retour d'une seance (cf. core.engine.stability).
-            for (_, before, _, _), (session, after, _, _) in zip(history, history[1:]):
+            for (_session, before, _, _), (session, after, _, _) in zip(history, history[1:]):
 
-                if before["decision"] != after["decision"]:
+                # Alerte d'achat ou de vente seulement : un retour a
+                # CONSERVER n'appelle aucune action.
+                action = ACTIONS.get(after["decision"])
+
+                # (Pas de bascule annoncee par-dessus un trou de cours.)
+                if (
+                    before["decision"] != after["decision"]
+                    and action
+                    and not market_service.is_gap(_session["Date"], session["Date"])
+                ):
                     events.append({
                         "kind": "signal",
+                        "action": action,
                         "symbol": symbol,
                         "name": structure["name"],
                         "date": _day(session["Date"]),
@@ -112,6 +127,10 @@ def alerts(user):
 
     seen = user.alerts_seen_on.isoformat() if user.alerts_seen_on else None
 
+    # Types d'alerte desactives dans les reglages : masques. Notifications
+    # coupees : la liste reste consultable, sans pastille de non-lus.
+    notifications = notification_settings(user.preferences)
+
     items = []
 
     for event in cached_events(user.preferences):
@@ -120,6 +139,9 @@ def alerts(user):
             continue
 
         if event["kind"] == "signal" and followed and event["symbol"] not in followed:
+            continue
+
+        if not notifications[event.get("action", event["kind"])]:
             continue
 
         items.append({
@@ -134,7 +156,8 @@ def alerts(user):
 
     return {
         "alerts": items,
-        "unread": sum(1 for item in items if item["unread"])
+        "unread": sum(1 for item in items if item["unread"]) if notifications["enabled"] else 0,
+        "notifications": notifications
     }
 
 

@@ -21,3 +21,12 @@ class AdminCreateIn(BaseModel):
     first_name: Optional[str] = Field(default=None, max_length=100)
     last_name: Optional[str] = Field(default=None, max_length=100)
     phone: Optional[str] = Field(default=None, max_length=30)
+
+
+class UserCreateIn(AdminCreateIn):
+    """Compte cree depuis le back-office (utilisateur de l'app ou admin)."""
+
+    role: Literal["user", "admin"] = "user"
+    plan: Literal["free", "pro"] = "free"
+    # Mot de passe provisoire : a changer a la premiere connexion.
+    must_change_password: bool = True
